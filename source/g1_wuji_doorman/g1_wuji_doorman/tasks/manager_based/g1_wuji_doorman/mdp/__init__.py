@@ -1,10 +1,39 @@
-# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""This sub-module contains the functions that are specific to the environment."""
+"""MDP terms used by the G1 Wuji Doorman environment."""
 
-from isaaclab.envs.mdp import *  # noqa: F401, F403
+from isaaclab.envs.mdp.actions.actions_cfg import (
+    JointEffortActionCfg,
+    JointPositionActionCfg,
+)
 
-from .rewards import *  # noqa: F401, F403
+from isaaclab.envs.mdp.events import (
+    reset_joints_by_offset,
+    reset_scene_to_default,
+)
+from isaaclab.envs.mdp.observations import joint_pos_rel, joint_vel_rel
+from isaaclab.envs.mdp.rewards import is_alive, is_terminated, joint_vel_l1
+from isaaclab.envs.mdp.terminations import (
+    joint_pos_out_of_manual_limit,
+    time_out,
+)
+
+from .rewards import joint_pos_target_l2
+
+__all__ = [
+    "JointEffortActionCfg",
+    "reset_joints_by_offset",
+    "joint_pos_rel",
+    "joint_vel_rel",
+    "is_alive",
+    "is_terminated",
+    "joint_vel_l1",
+    "joint_pos_out_of_manual_limit",
+    "time_out",
+    "joint_pos_target_l2",
+    "JointPositionActionCfg",
+    "reset_scene_to_default",
+]

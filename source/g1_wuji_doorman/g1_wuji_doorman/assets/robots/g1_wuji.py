@@ -63,9 +63,9 @@ G1_WUJI_CFG = ArticulationCfg(
         # Joints not matched below remain at zero.
         joint_pos={
             # Legs
-            ".*_hip_pitch_joint": -0.1,
-            ".*_knee_joint": 0.3,
-            ".*_ankle_pitch_joint": -0.2,
+            ".*_hip_pitch_joint": 0.0,
+            ".*_knee_joint": 0.0,
+            ".*_ankle_pitch_joint": 0.0,
 
             # Thumb / finger 1
             ".*_finger1_joint1": 0.12,

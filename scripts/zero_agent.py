@@ -46,6 +46,10 @@ def main():
     )
     # create environment
     env = gym.make(args_cli.task, cfg=env_cfg)
+    # Inspect the generated door articulation.
+    door = env.unwrapped.scene["door"]
+    print("[INFO] Door bodies:", door.body_names)
+    print("[INFO] Door joints:", door.joint_names)
 
     # print info (this is vectorized environment)
     print(f"[INFO]: Gym observation space: {env.observation_space}")

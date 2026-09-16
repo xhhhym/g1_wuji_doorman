@@ -16,6 +16,8 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.utils import configclass
+from isaaclab.actuators import ImplicitActuatorCfg
+from g1_wuji_doorman.assets.door import DoorSpawnerCfg, spawn_door
 
 from . import mdp
 
@@ -23,7 +25,59 @@ from . import mdp
 # Pre-defined configs
 ##
 
-from isaaclab_assets.robots.cartpole import CARTPOLE_CFG  # isort:skip
+from g1_wuji_doorman.assets.robots import G1_WUJI_CFG
+
+
+##
+# Door Generation
+##
+
+DOOR_SPAWNER_CFG = DoorSpawnerCfg(
+    func=spawn_door,
+
+    articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+        fix_root_link=True,
+        enabled_self_collisions=True,
+        solver_position_iteration_count=8,
+        solver_velocity_iteration_count=4,
+    ),
+
+    build_latch=True,
+
+    # 暂时关闭无关功能
+    add_walls=False,
+    add_floors=False,
+    add_lights=False,
+    add_ceiling=False,
+    randomize_material=False,
+    dynamic_material_randomization=False,
+
+    # 固定开门方向
+    door_open_lr=["right"],
+    door_open_io=["out"],
+
+    # 匹配 XML 门
+    rand_door_width=0.85,
+    rand_door_height=2.0,
+    rand_door_handle_height=0.8,
+    rand_door_handle_width=0.23,
+    rand_door_weight=10.0,
+
+    # 固定门框宽度
+    wall_minimum_clearance_fblr=(3.0, 3.0, 0.505, 0.505),
+    wall_maximum_clearance_fblr=(3.0, 3.0, 0.505, 0.505),
+
+    # 匹配 XML 把手
+    rand_axle_length=0.20,
+    rand_handle_length=0.20,
+    rand_handle_radius=0.02,
+    rand_spawn_hook=False,
+
+    # 固定动力学
+    rand_hinge_drive_max_force=10.0,
+    rand_hinge_drive_stiffness=0.0,
+    rand_handle_drive_max_force=2.0,
+)
 
 
 ##
@@ -33,23 +87,62 @@ from isaaclab_assets.robots.cartpole import CARTPOLE_CFG  # isort:skip
 
 @configclass
 class G1WujiDoormanSceneCfg(InteractiveSceneCfg):
-    """Configuration for a cart-pole scene."""
+    """Configuration for scene."""
 
-    # ground plane
+    # Ground plane
     ground = AssetBaseCfg(
         prim_path="/World/ground",
         spawn=sim_utils.GroundPlaneCfg(size=(100.0, 100.0)),
     )
 
-    # robot
-    robot: ArticulationCfg = CARTPOLE_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+    # Robot
+    robot: ArticulationCfg = G1_WUJI_CFG.replace(
+        prim_path="{ENV_REGEX_NS}/Robot"
+    )
+    # Shift the robot toward negative Y so the default left palm is aligned
+    # with the door handle (measured palm/handle Y offset: about -0.347 m).
+    robot.init_state.pos = (0.04, -0.20, 0.75)
 
-    # lights
-    dome_light = AssetBaseCfg(
-        prim_path="/World/DomeLight",
-        spawn=sim_utils.DomeLightCfg(color=(0.9, 0.9, 0.9), intensity=500.0),
+    # Door
+    door: ArticulationCfg = ArticulationCfg(
+        prim_path="{ENV_REGEX_NS}/Door",
+        spawn=DOOR_SPAWNER_CFG,
+        init_state=ArticulationCfg.InitialStateCfg(
+            pos=(0.6, 0.0, 0.04),
+            joint_pos={
+                ".*hinge.*": 0.0,
+                ".*handle.*": 0.0,
+                ".*latch.*": 0.0,
+            },
+            joint_vel={
+                ".*": 0.0,
+            },
+        ),
+        actuators={
+            "hinge": ImplicitActuatorCfg(
+                joint_names_expr=[".*hinge.*"],
+                velocity_limit_sim=100.0,
+                stiffness=None,
+                damping=None,
+            ),
+            "handle": ImplicitActuatorCfg(
+                joint_names_expr=[".*handle.*"],
+                velocity_limit_sim=100.0,
+                stiffness=None,
+                damping=None,
+            ),
+        },
     )
 
+    # Lights
+    dome_light = AssetBaseCfg(
+        prim_path="/World/DomeLight",
+        spawn=sim_utils.DomeLightCfg(
+            color=(0.9, 0.9, 0.9),
+            intensity=500.0,
+        ),
+    )
+    
 
 ##
 # MDP settings
@@ -58,9 +151,14 @@ class G1WujiDoormanSceneCfg(InteractiveSceneCfg):
 
 @configclass
 class ActionsCfg:
-    """Action specifications for the MDP."""
+    """Temporary actions for fixed-base G1 asset inspection."""
 
-    joint_effort = mdp.JointEffortActionCfg(asset_name="robot", joint_names=["slider_to_cart"], scale=100.0)
+    joint_pos = mdp.JointPositionActionCfg(
+        asset_name="robot",
+        joint_names=[".*"],
+        scale=0.0,
+        use_default_offset=True,
+    )
 
 
 @configclass
@@ -85,29 +183,15 @@ class ObservationsCfg:
 
 @configclass
 class EventCfg:
-    """Configuration for events."""
+    """Reset the robot and door to their configured default states."""
 
-    # reset
-    reset_cart_position = EventTerm(
-        func=mdp.reset_joints_by_offset,
+    reset_scene = EventTerm(
+        func=mdp.reset_scene_to_default,
         mode="reset",
         params={
-            "asset_cfg": SceneEntityCfg("robot", joint_names=["slider_to_cart"]),
-            "position_range": (-1.0, 1.0),
-            "velocity_range": (-0.5, 0.5),
+            "reset_joint_targets": True,
         },
     )
-
-    reset_pole_position = EventTerm(
-        func=mdp.reset_joints_by_offset,
-        mode="reset",
-        params={
-            "asset_cfg": SceneEntityCfg("robot", joint_names=["cart_to_pole"]),
-            "position_range": (-0.25 * math.pi, 0.25 * math.pi),
-            "velocity_range": (-0.25 * math.pi, 0.25 * math.pi),
-        },
-    )
-
 
 @configclass
 class RewardsCfg:
@@ -117,24 +201,7 @@ class RewardsCfg:
     alive = RewTerm(func=mdp.is_alive, weight=1.0)
     # (2) Failure penalty
     terminating = RewTerm(func=mdp.is_terminated, weight=-2.0)
-    # (3) Primary task: keep pole upright
-    pole_pos = RewTerm(
-        func=mdp.joint_pos_target_l2,
-        weight=-1.0,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=["cart_to_pole"]), "target": 0.0},
-    )
-    # (4) Shaping tasks: lower cart velocity
-    cart_vel = RewTerm(
-        func=mdp.joint_vel_l1,
-        weight=-0.01,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=["slider_to_cart"])},
-    )
-    # (5) Shaping tasks: lower pole angular velocity
-    pole_vel = RewTerm(
-        func=mdp.joint_vel_l1,
-        weight=-0.005,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=["cart_to_pole"])},
-    )
+   
 
 
 @configclass
@@ -143,12 +210,6 @@ class TerminationsCfg:
 
     # (1) Time out
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
-    # (2) Cart out of bounds
-    cart_out_of_bounds = DoneTerm(
-        func=mdp.joint_pos_out_of_manual_limit,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=["slider_to_cart"]), "bounds": (-3.0, 3.0)},
-    )
-
 
 ##
 # Environment configuration
@@ -158,7 +219,7 @@ class TerminationsCfg:
 @configclass
 class G1WujiDoormanEnvCfg(ManagerBasedRLEnvCfg):
     # Scene settings
-    scene: G1WujiDoormanSceneCfg = G1WujiDoormanSceneCfg(num_envs=4096, env_spacing=4.0)
+    scene: G1WujiDoormanSceneCfg = G1WujiDoormanSceneCfg(num_envs=1, env_spacing=4.0)
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
