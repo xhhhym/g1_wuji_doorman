@@ -635,11 +635,16 @@ def spawn_door(
     if cfg.articulation_props is not None:
         schemas.modify_articulation_root_properties(prim_path, cfg.articulation_props)
 
+    # Room geometry shared by walls, ceiling, and wall-mounted lights.
+    wall_thickness = 0.05
+    half_wall_thickness = wall_thickness / 2
+    front = rear = left_front = right_front = left_rear = right_rear = 0.0
+
+    if cfg.add_lights and not cfg.add_walls:
+        raise ValueError("Door lights require add_walls=True because their positions depend on wall clearances.")
+
     # skip wall spawning logics
     if cfg.add_walls:
-        wall_thickness = 0.05
-        half_wall_thickness = wall_thickness / 2
-
         front = (
             np.random.uniform(
                 cfg.wall_minimum_clearance_fblr[0], cfg.wall_maximum_clearance_fblr[0]
