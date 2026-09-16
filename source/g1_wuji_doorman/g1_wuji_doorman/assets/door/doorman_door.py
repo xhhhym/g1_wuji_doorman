@@ -83,13 +83,13 @@ class DoorSpawnerCfg(sim_utils.RigidObjectSpawnerCfg):
     rand_hinge_drive_max_force: Optional[float] = None
     rand_hinge_drive_stiffness: Optional[float] = None
     rand_handle_drive_max_force: Optional[float] = None
-    rand_front: Optional[bool] = None
-    rand_rear: Optional[bool] = None
-    rand_left: Optional[bool] = None
-    rand_left_front: Optional[bool] = None
-    rand_right_front: Optional[bool] = None
-    rand_left_rear: Optional[bool] = None
-    rand_right_rear: Optional[bool] = None
+    rand_front: Optional[float] = None
+    rand_rear: Optional[float] = None
+    rand_left: Optional[float] = None
+    rand_left_front: Optional[float] = None
+    rand_right_front: Optional[float] = None
+    rand_left_rear: Optional[float] = None
+    rand_right_rear: Optional[float] = None
 
 
 def _update_joint_transform(stage, joint_path, prim0_path, prim1_path):
