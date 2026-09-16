@@ -91,7 +91,6 @@ class DoorSpawnerCfg(sim_utils.RigidObjectSpawnerCfg):
     rand_left_rear: Optional[float] = None
     rand_right_rear: Optional[float] = None
 
-
 def _update_joint_transform(stage, joint_path, prim0_path, prim1_path):
     # Get the joint prim
     joint_prim = stage.GetPrimAtPath(joint_path)
