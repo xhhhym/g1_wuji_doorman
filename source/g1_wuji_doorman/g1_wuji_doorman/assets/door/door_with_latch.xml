@@ -1,0 +1,197 @@
+<mujoco model="door_with_latch">
+    <compiler angle="radian" autolimits="true"/>
+    <option timestep="0.002" gravity="0 0 -9.81" integrator="implicitfast"/>
+    <statistic center="0 0 0.1" extent="0.8"/>
+
+    <visual>
+        <headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3" specular="0 0 0"/>
+        <rgba haze="0.15 0.25 0.35 1"/>
+        <global azimuth="-130" elevation="-20"/>
+    </visual>
+
+    <default>
+        <default class="door_scene">
+            <geom contype="1" conaffinity="1" condim="6"
+                  friction="2.0 0.2 0.02"
+                  solref="0.02 1" solimp="0.95 0.99 0.001"/>
+            <joint damping="3.0" frictionloss="0.3"/>
+        </default>
+
+        <!-- The handle is passive and returns to zero after release. -->
+        <default class="handle_joint">
+            <joint damping="0.5" frictionloss="0.05"
+                   stiffness="0.5" springref="0.0"/>
+        </default>
+
+        <!-- The latch spring pushes the bolt back toward its extended q=0 state. -->
+        <default class="latch_joint">
+            <joint damping="0.5" frictionloss="0.05"
+                   stiffness="50.0" springref="0.0"/>
+        </default>
+
+        <default class="visual_only">
+            <geom contype="0" conaffinity="0" group="1"/>
+        </default>
+
+        <!-- Lower metal-on-metal friction lets the bevel slide over the strike. -->
+        <default class="latch_contact">
+            <geom contype="1" conaffinity="1" condim="6"
+                  friction="0.3 0.01 0.001"
+                  solref="0.01 1" solimp="0.95 0.99 0.001"/>
+        </default>
+    </default>
+
+    <asset>
+        <texture type="skybox" builtin="gradient"
+                 rgb1="0.3 0.5 0.7" rgb2="0 0 0"
+                 width="512" height="3072"/>
+        <texture type="2d" name="groundplane" builtin="checker" mark="edge"
+                 rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3"
+                 markrgb="0.8 0.8 0.8" width="300" height="300"/>
+        <material name="groundplane" texture="groundplane"
+                  texuniform="true" texrepeat="5 5" reflectance="0.2"/>
+        <material name="wall" rgba="0.72 0.72 0.70 1"/>
+        <material name="door" rgba="0.55 0.28 0.12 1"/>
+        <material name="metal" rgba="0.55 0.56 0.58 1"/>
+        <material name="handle" rgba="0.08 0.08 0.08 1"/>
+        <material name="latch" rgba="0.75 0.72 0.60 1"/>
+
+        <!--
+          Convex triangular-prism latch bolt.  Its sloping face converts
+          closing contact against the strike lip into inward slide motion.
+          Local +y is the extended direction and local -y is retraction.
+        -->
+        <!-- Keep the wedge in a file-backed mesh for Isaac Sim's MJCF importer. -->
+        <mesh name="latch_wedge" file="latch_wedge.obj"/>
+    </asset>
+
+    <worldbody>
+        <light pos="0 0 4" dir="0 0 -1" directional="true"/>
+        <geom name="floor" class="door_scene" size="0 0 0.05"
+              type="plane" material="groundplane"/>
+
+        <!-- Static wall and visual jambs from the original model. -->
+        <geom name="wall_left" class="visual_only"
+              pos="2 -1.05 1.1" type="box" size="0.06 0.57 1.1"
+              material="wall"/>
+        <geom name="wall_right" class="visual_only"
+              pos="2 1.10 1.1" type="box" size="0.06 0.57 1.1"
+              material="wall"/>
+        <geom name="wall_top" class="visual_only"
+              pos="2 0.025 2.18" type="box" size="0.06 0.445 0.12"
+              material="wall"/>
+        <geom name="jamb_left" class="visual_only"
+              pos="2 -0.46 1.05" type="box" size="0.07 0.04 1.05"
+              material="metal"/>
+        <geom name="jamb_right" class="visual_only"
+              pos="2 0.51 1.05" type="box" size="0.07 0.04 1.05"
+              material="metal"/>
+        <geom name="jamb_top" class="visual_only"
+              pos="2 0.025 2.08" type="box" size="0.07 0.485 0.04"
+              material="metal"/>
+
+        <!--
+          Four collision bars form a rectangular strike-plate opening.
+          The closed latch passes through the center opening.  The front bar
+          catches an extended latch when the door is pulled toward -x.
+        -->
+        <geom name="strike_front_lip" class="latch_contact"
+              pos="1.945 0.480 1.040" type="box"
+              size="0.015 0.010 0.025" material="metal"/>
+        <geom name="strike_back_lip" class="latch_contact"
+              pos="2.055 0.480 1.040" type="box"
+              size="0.015 0.010 0.025" material="metal"/>
+        <geom name="strike_lower_lip" class="latch_contact"
+              pos="2.000 0.480 0.995" type="box"
+              size="0.050 0.010 0.020" material="metal"/>
+        <geom name="strike_upper_lip" class="latch_contact"
+              pos="2.000 0.480 1.085" type="box"
+              size="0.050 0.010 0.020" material="metal"/>
+
+        <!--
+          Original 0.85 x 2.0 x 0.04 m, 10 kg non-spring door panel.
+          The hinge retains damping=3.0 and frictionloss=0.3.
+        -->
+        <body name="door_body" pos="2 -0.42 0.04">
+            <inertial pos="0 0.425 1.0" mass="10"
+                      diaginertia="3.935 3.335 0.603"/>
+            <joint name="door_hinge" class="door_scene" type="hinge"
+                   pos="0 0 0" axis="0 0 1"
+                   range="0 2.094395"/>
+
+            <geom name="door_panel" class="door_scene"
+                  pos="0 0.445 1.0" type="box"
+                  size="0.02 0.425 1.0" material="door"/>
+            <geom name="hinge_pin" class="visual_only"
+                  pos="0 0 1.0" type="cylinder"
+                  size="0.025 1.03" material="metal"/>
+
+            <!-- Passive rotating handle and spindle. -->
+            <body name="handle_body" pos="0 0.62 1.0">
+                <inertial pos="0 0 0" mass="0.5"
+                          diaginertia="0.002 0.002 0.002"/>
+                <joint name="handle_joint" class="handle_joint" type="hinge"
+                       axis="1 0 0" range="0 0.785398"/>
+
+                <geom name="front_handle_mount" class="visual_only"
+                      pos="-0.038 0 0" type="cylinder" size="0.045 0.018"
+                      axisangle="0 1 0 1.57079632679" material="metal"/>
+                <geom name="front_handle_neck" class="door_scene"
+                      pos="-0.08 0 0" type="box" size="0.04 0.014 0.02"
+                      material="handle"/>
+                <geom name="front_handle" class="door_scene"
+                      pos="-0.10 -0.05 0" type="box" size="0.02 0.10 0.02"
+                      material="handle"/>
+
+                <geom name="back_handle_mount" class="visual_only"
+                      pos="0.038 0 0" type="cylinder" size="0.045 0.018"
+                      axisangle="0 1 0 1.57079632679" material="metal"/>
+                <geom name="back_handle_neck" class="door_scene"
+                      pos="0.08 0 0" type="box" size="0.04 0.014 0.02"
+                      material="handle"/>
+                <geom name="back_handle" class="door_scene"
+                      pos="0.10 -0.05 0" type="box" size="0.02 0.10 0.02"
+                      material="handle"/>
+
+                <site name="door_handle_site" pos="-0.10 -0.05 0"
+                      size="0.025" rgba="1 0.15 0.05 1"/>
+            </body>
+
+            <!--
+              q=0: fully extended; q=0.03: fully retracted.
+              The spring returns the latch to q=0 when the handle is released.
+            -->
+            <body name="latch_body" pos="0 0.875 1.0">
+                <inertial pos="0 0 0" mass="0.1"
+                          diaginertia="0.00005 0.00005 0.00005"/>
+                <joint name="latch_slide" class="latch_joint" type="slide"
+                       axis="0 -1 0" range="0 0.03"/>
+                <geom name="latch_bolt" class="latch_contact" type="mesh"
+                      mesh="latch_wedge" material="latch"/>
+                <site name="latch_tip_site" pos="0 0.03 0"
+                      size="0.006" rgba="0.1 1 0.1 1"/>
+            </body>
+        </body>
+    </worldbody>
+
+    <!--
+      Handle angle 0..pi/4 maps to latch retraction 0..0.03 m.
+      0.03 / (pi/4) = 0.038197186 m/rad.
+    -->
+    <equality>
+        <joint name="handle_latch_coupling"
+               joint1="latch_slide" joint2="handle_joint"
+               polycoef="0 0.038197186 0 0 0"
+               solref="0.004 1" solimp="0.99 0.999 0.0001"/>
+    </equality>
+
+    <sensor>
+        <framepos name="door_handle_pos" objtype="site"
+                  objname="door_handle_site"/>
+        <framequat name="door_handle_quat" objtype="site"
+                   objname="door_handle_site"/>
+        <jointpos name="door_hinge_angle" joint="door_hinge"/>
+        <jointpos name="handle_angle" joint="handle_joint"/>
+        <jointpos name="latch_retraction" joint="latch_slide"/>
+    </sensor>
+</mujoco>
