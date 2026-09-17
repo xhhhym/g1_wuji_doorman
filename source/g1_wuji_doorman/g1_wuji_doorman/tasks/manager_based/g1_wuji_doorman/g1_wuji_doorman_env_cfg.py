@@ -92,15 +92,22 @@ class G1WujiDoormanSceneCfg(InteractiveSceneCfg):
     # Ground plane
     ground = AssetBaseCfg(
         prim_path="/World/ground",
-        spawn=sim_utils.GroundPlaneCfg(size=(100.0, 100.0)),
+        spawn=sim_utils.GroundPlaneCfg(
+            size=(100.0, 100.0),
+            physics_material=sim_utils.RigidBodyMaterialCfg(
+                static_friction=1.0,
+                dynamic_friction=1.0,
+                restitution=0.0,
+            ),
+        ),
     )
 
     # Robot
     robot: ArticulationCfg = G1_WUJI_CFG.replace(
         prim_path="{ENV_REGEX_NS}/Robot"
     )
-    # Shift the robot toward negative Y so the default left palm is aligned
-    # with the door handle (measured palm/handle Y offset: about -0.347 m).
+    # Original DoorMan starting pose: the door root is at x=0.60 m,
+    # while the robot root starts at x=0.04 m (about 0.56 m apart).
     robot.init_state.pos = (0.04, -0.20, 0.75)
 
     # Door

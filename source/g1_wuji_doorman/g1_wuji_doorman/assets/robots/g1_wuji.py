@@ -102,120 +102,123 @@ G1_WUJI_CFG = ArticulationCfg(
 # Free-base configuration for HOMIE standing and door-opening training
 # -----------------------------------------------------------------------------
 
-G1_WUJI_FREE_BASE_CFG = G1_WUJI_CFG.copy()
+# These names and parameter arrays are copied directly from the already
+# validated GR00T-VisualSim2Real/viz_wuji_homie_standing.py integration.
+DOORMAN_BODY_DOF_NAMES = (
+    "left_hip_pitch_joint", "left_hip_roll_joint", "left_hip_yaw_joint",
+    "left_knee_joint", "left_ankle_pitch_joint", "left_ankle_roll_joint",
+    "right_hip_pitch_joint", "right_hip_roll_joint", "right_hip_yaw_joint",
+    "right_knee_joint", "right_ankle_pitch_joint", "right_ankle_roll_joint",
+    "waist_yaw_joint", "waist_roll_joint", "waist_pitch_joint",
+    "left_shoulder_pitch_joint", "left_shoulder_roll_joint",
+    "left_shoulder_yaw_joint", "left_elbow_joint", "left_wrist_roll_joint",
+    "left_wrist_pitch_joint", "left_wrist_yaw_joint",
+    "right_shoulder_pitch_joint", "right_shoulder_roll_joint",
+    "right_shoulder_yaw_joint", "right_elbow_joint", "right_wrist_roll_joint",
+    "right_wrist_pitch_joint", "right_wrist_yaw_joint",
+)
+DOORMAN_WUJI_DOF_NAMES = tuple(
+    f"{side}_finger{finger}_joint{joint}"
+    for side in ("left", "right")
+    for finger in range(1, 6)
+    for joint in range(1, 5)
+)
+DOORMAN_ALL_DOF_NAMES = DOORMAN_BODY_DOF_NAMES + DOORMAN_WUJI_DOF_NAMES
 
-# The robot must respond to gravity and balance itself through HOMIE.
-G1_WUJI_FREE_BASE_CFG.spawn.rigid_props.disable_gravity = False
-G1_WUJI_FREE_BASE_CFG.spawn.articulation_props.fix_root_link = False
+_BODY_EFFORT = (
+    88, 139, 88, 139, 35, 35, 88, 139, 88, 139, 35, 35, 88, 35, 35,
+    25, 25, 25, 25, 25, 5, 5, 25, 25, 25, 25, 25, 5, 5,
+)
+_BODY_VELOCITY = (
+    32, 20, 32, 20, 30, 30, 32, 20, 32, 20, 30, 30, 32, 30, 30,
+    37, 37, 37, 37, 37, 22, 22, 37, 37, 37, 37, 37, 22, 22,
+)
+_BODY_ARMATURE = (
+    0.01017752004, 0.025101925, 0.01017752004, 0.025101925, 0.00721945, 0.00721945,
+    0.01017752004, 0.025101925, 0.01017752004, 0.025101925, 0.00721945, 0.00721945,
+    0.01017752004, 0.00721945, 0.00721945,
+    0.003609725, 0.003609725, 0.003609725, 0.003609725, 0.003609725, 0.00425, 0.00425,
+    0.003609725, 0.003609725, 0.003609725, 0.003609725, 0.003609725, 0.00425, 0.00425,
+)
+_BODY_STIFFNESS = (
+    150, 150, 150, 200, 40, 40, 150, 150, 150, 200, 40, 40, 250, 250, 250,
+    100, 100, 40, 40, 20, 20, 20, 100, 100, 40, 40, 20, 20, 20,
+)
+_BODY_DAMPING = (
+    2, 2, 2, 4, 2, 2, 2, 2, 2, 4, 2, 2, 5, 5, 5,
+    5, 5, 2, 2, 2, 2, 2, 5, 5, 2, 2, 2, 2, 2,
+)
 
-# Match the PD gains used when training the HOMIE checkpoints.
-G1_WUJI_FREE_BASE_CFG.actuators = {
-    "body": ImplicitActuatorCfg(
-        joint_names_expr=[
-            ".*_hip_.*_joint",
-            ".*_knee_joint",
-            ".*_ankle_.*_joint",
-            "waist_.*_joint",
-            ".*_shoulder_.*_joint",
-            ".*_elbow_joint",
-            ".*_wrist_.*_joint",
-        ],
-        stiffness={
-            ".*_hip_.*_joint": 150.0,
-            ".*_knee_joint": 200.0,
-            ".*_ankle_.*_joint": 40.0,
-            "waist_.*_joint": 250.0,
-            ".*_shoulder_pitch_joint": 100.0,
-            ".*_shoulder_roll_joint": 100.0,
-            ".*_shoulder_yaw_joint": 40.0,
-            ".*_elbow_joint": 40.0,
-            ".*_wrist_.*_joint": 20.0,
-        },
-        damping={
-            ".*_hip_.*_joint": 2.0,
-            ".*_knee_joint": 4.0,
-            ".*_ankle_.*_joint": 2.0,
-            "waist_.*_joint": 5.0,
-            ".*_shoulder_pitch_joint": 5.0,
-            ".*_shoulder_roll_joint": 5.0,
-            ".*_shoulder_yaw_joint": 2.0,
-            ".*_elbow_joint": 2.0,
-            ".*_wrist_.*_joint": 2.0,
-        },
+_effort: dict[str, float] = dict(zip(DOORMAN_BODY_DOF_NAMES, _BODY_EFFORT))
+_velocity: dict[str, float] = dict(zip(DOORMAN_BODY_DOF_NAMES, _BODY_VELOCITY))
+_armature: dict[str, float] = dict(
+    zip(DOORMAN_BODY_DOF_NAMES, (value * 3.0 for value in _BODY_ARMATURE))
+)
+_stiffness: dict[str, float] = dict(
+    zip(DOORMAN_BODY_DOF_NAMES, _BODY_STIFFNESS)
+)
+_damping: dict[str, float] = dict(zip(DOORMAN_BODY_DOF_NAMES, _BODY_DAMPING))
+for _joint_name in DOORMAN_WUJI_DOF_NAMES:
+    _effort[_joint_name] = 30.0
+    _velocity[_joint_name] = 10.0
+    _armature[_joint_name] = 0.003
+    _stiffness[_joint_name] = 10.0
+    _damping[_joint_name] = 0.2
 
-        effort_limit_sim={
-            ".*_hip_pitch_joint": 88.0,
-            ".*_hip_roll_joint": 139.0,
-            ".*_hip_yaw_joint": 88.0,
-            ".*_knee_joint": 139.0,
-            ".*_ankle_pitch_joint": 35.0,
-            ".*_ankle_roll_joint": 35.0,
-            "waist_yaw_joint": 88.0,
-            "waist_roll_joint": 35.0,
-            "waist_pitch_joint": 35.0,
-            ".*_shoulder_pitch_joint": 25.0,
-            ".*_shoulder_roll_joint": 25.0,
-            ".*_shoulder_yaw_joint": 25.0,
-            ".*_elbow_joint": 25.0,
-            ".*_wrist_roll_joint": 25.0,
-            ".*_wrist_pitch_joint": 5.0,
-            ".*_wrist_yaw_joint": 5.0,
-        },
-        velocity_limit_sim={
-            ".*_hip_pitch_joint": 32.0,
-            ".*_hip_roll_joint": 20.0,
-            ".*_hip_yaw_joint": 32.0,
-            ".*_knee_joint": 20.0,
-            ".*_ankle_pitch_joint": 30.0,
-            ".*_ankle_roll_joint": 30.0,
-            "waist_yaw_joint": 32.0,
-            "waist_roll_joint": 30.0,
-            "waist_pitch_joint": 30.0,
-            ".*_shoulder_pitch_joint": 37.0,
-            ".*_shoulder_roll_joint": 37.0,
-            ".*_shoulder_yaw_joint": 37.0,
-            ".*_elbow_joint": 37.0,
-            ".*_wrist_roll_joint": 37.0,
-            ".*_wrist_pitch_joint": 22.0,
-            ".*_wrist_yaw_joint": 22.0,
-        },
-        armature={
-            ".*_hip_pitch_joint": 0.03053256012,
-            ".*_hip_roll_joint": 0.075305775,
-            ".*_hip_yaw_joint": 0.03053256012,
-            ".*_knee_joint": 0.075305775,
-            ".*_ankle_pitch_joint": 0.02165835,
-            ".*_ankle_roll_joint": 0.02165835,
-            "waist_yaw_joint": 0.03053256012,
-            "waist_roll_joint": 0.02165835,
-            "waist_pitch_joint": 0.02165835,
-            ".*_shoulder_pitch_joint": 0.010829175,
-            ".*_shoulder_roll_joint": 0.010829175,
-            ".*_shoulder_yaw_joint": 0.010829175,
-            ".*_elbow_joint": 0.010829175,
-            ".*_wrist_roll_joint": 0.010829175,
-            ".*_wrist_pitch_joint": 0.01275,
-            ".*_wrist_yaw_joint": 0.01275,
-        },
-        friction=0.0,
-    ),
-
-        "hands": ImplicitActuatorCfg(
-        joint_names_expr=[".*_finger[1-5]_joint[1-4]"],
-        effort_limit_sim=30.0,
-        velocity_limit_sim=10.0,
-        stiffness=10.0,
-        damping=0.2,
-        armature=0.003,
-        friction=0.0,
-    ),
+_free_base_default_pos: dict[str, float] = {
+    name: 0.0 for name in DOORMAN_ALL_DOF_NAMES
 }
-
-# Standing pose expected by the HOMIE checkpoint.
-G1_WUJI_FREE_BASE_CFG.init_state.joint_pos.update(
+_free_base_default_pos.update(
     {
-        ".*_hip_pitch_joint": -0.1,
-        ".*_knee_joint": 0.3,
-        ".*_ankle_pitch_joint": -0.2,
+        "left_hip_pitch_joint": -0.1,
+        "left_knee_joint": 0.3,
+        "left_ankle_pitch_joint": -0.2,
+        "right_hip_pitch_joint": -0.1,
+        "right_knee_joint": 0.3,
+        "right_ankle_pitch_joint": -0.2,
+        "left_finger1_joint1": 0.05,
+        "right_finger1_joint1": 0.05,
     }
+)
+
+G1_WUJI_FREE_BASE_CFG = ArticulationCfg(
+    spawn=sim_utils.UsdFileCfg(
+        usd_path=str(G1_WUJI_USD_PATH),
+        activate_contact_sensors=True,
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(
+            disable_gravity=False,
+            retain_accelerations=False,
+            linear_damping=0.0,
+            angular_damping=0.0,
+            max_linear_velocity=1000.0,
+            max_angular_velocity=1000.0,
+            max_depenetration_velocity=1.0,
+        ),
+        articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+            fix_root_link=False,
+            enabled_self_collisions=True,
+            solver_position_iteration_count=8,
+            solver_velocity_iteration_count=4,
+        ),
+    ),
+    init_state=ArticulationCfg.InitialStateCfg(
+        pos=(0.0, 0.0, 0.75),
+        rot=(1.0, 0.0, 0.0, 0.0),
+        lin_vel=(0.0, 0.0, 0.0),
+        ang_vel=(0.0, 0.0, 0.0),
+        joint_pos=_free_base_default_pos,
+        joint_vel={".*": 0.0},
+    ),
+    soft_joint_pos_limit_factor=0.9,
+    actuators={
+        "all": ImplicitActuatorCfg(
+            joint_names_expr=list(DOORMAN_ALL_DOF_NAMES),
+            effort_limit_sim=_effort,
+            velocity_limit_sim=_velocity,
+            stiffness=_stiffness,
+            damping=_damping,
+            armature=_armature,
+            friction={name: 0.0 for name in DOORMAN_ALL_DOF_NAMES},
+        ),
+    },
 )

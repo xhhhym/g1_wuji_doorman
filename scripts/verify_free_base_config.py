@@ -17,18 +17,13 @@ simulation_app = app_launcher.app
 import torch
 
 import isaaclab.sim as sim_utils
-from isaaclab.scene import InteractiveScene
+from isaaclab.assets import Articulation
 from isaaclab.sim import SimulationContext
 
 from g1_wuji_doorman.assets.robots import (
     G1_WUJI_CFG,
     G1_WUJI_FREE_BASE_CFG,
 )
-from g1_wuji_doorman.tasks.manager_based.g1_wuji_doorman.g1_wuji_doorman_env_cfg import (
-    G1WujiDoormanSceneCfg,
-)
-
-
 DT = 1.0 / 200.0
 
 
@@ -59,18 +54,11 @@ def main() -> None:
         )
     )
 
-    scene_cfg = G1WujiDoormanSceneCfg(num_envs=1, env_spacing=4.0)
-    scene_cfg.robot = G1_WUJI_FREE_BASE_CFG.replace(
-        prim_path="{ENV_REGEX_NS}/Robot"
+    robot = Articulation(
+        G1_WUJI_FREE_BASE_CFG.replace(prim_path="/World/Robot")
     )
-    scene_cfg.robot.init_state.pos = (0.04, -0.20, 0.75)
-
-    scene = InteractiveScene(scene_cfg)
-
     sim.reset()
-    scene.update(DT)
-
-    robot = scene["robot"]
+    robot.update(DT)
 
     print(f"robot_joints={robot.num_joints}")
     print(f"robot_bodies={robot.num_bodies}")
@@ -111,11 +99,12 @@ def main() -> None:
             f"Expected 69 joints, found {robot.num_joints}"
         )
 
-    if len(joint_indices_to_list(robot.actuators["body"].joint_indices, robot.num_joints)) != 29:
-        raise RuntimeError("Body actuator must contain exactly 29 joints.")
-
-    if len(joint_indices_to_list(robot.actuators["hands"].joint_indices, robot.num_joints)) != 40:
-        raise RuntimeError("Hands actuator must contain exactly 40 joints.")
+    all_actuator_ids = joint_indices_to_list(
+        robot.actuators["all"].joint_indices,
+        robot.num_joints,
+    )
+    if len(all_actuator_ids) != 69:
+        raise RuntimeError("DoorMan actuator must contain exactly 69 joints.")
 
     if duplicate_joints:
         raise RuntimeError(
@@ -159,7 +148,7 @@ def main() -> None:
                 f"found {actual_position}"
             )
 
-    print("FREE_BASE_CONFIG_PASS")
+    print("FREE_BASE_CONFIG_PASS", flush=True)
 
 
 if __name__ == "__main__":
