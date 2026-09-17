@@ -97,3 +97,125 @@ G1_WUJI_CFG = ArticulationCfg(
 
     soft_joint_pos_limit_factor=0.9,
 )
+
+# -----------------------------------------------------------------------------
+# Free-base configuration for HOMIE standing and door-opening training
+# -----------------------------------------------------------------------------
+
+G1_WUJI_FREE_BASE_CFG = G1_WUJI_CFG.copy()
+
+# The robot must respond to gravity and balance itself through HOMIE.
+G1_WUJI_FREE_BASE_CFG.spawn.rigid_props.disable_gravity = False
+G1_WUJI_FREE_BASE_CFG.spawn.articulation_props.fix_root_link = False
+
+# Match the PD gains used when training the HOMIE checkpoints.
+G1_WUJI_FREE_BASE_CFG.actuators = {
+    "body": ImplicitActuatorCfg(
+        joint_names_expr=[
+            ".*_hip_.*_joint",
+            ".*_knee_joint",
+            ".*_ankle_.*_joint",
+            "waist_.*_joint",
+            ".*_shoulder_.*_joint",
+            ".*_elbow_joint",
+            ".*_wrist_.*_joint",
+        ],
+        stiffness={
+            ".*_hip_.*_joint": 150.0,
+            ".*_knee_joint": 200.0,
+            ".*_ankle_.*_joint": 40.0,
+            "waist_.*_joint": 250.0,
+            ".*_shoulder_pitch_joint": 100.0,
+            ".*_shoulder_roll_joint": 100.0,
+            ".*_shoulder_yaw_joint": 40.0,
+            ".*_elbow_joint": 40.0,
+            ".*_wrist_.*_joint": 20.0,
+        },
+        damping={
+            ".*_hip_.*_joint": 2.0,
+            ".*_knee_joint": 4.0,
+            ".*_ankle_.*_joint": 2.0,
+            "waist_.*_joint": 5.0,
+            ".*_shoulder_pitch_joint": 5.0,
+            ".*_shoulder_roll_joint": 5.0,
+            ".*_shoulder_yaw_joint": 2.0,
+            ".*_elbow_joint": 2.0,
+            ".*_wrist_.*_joint": 2.0,
+        },
+
+        effort_limit_sim={
+            ".*_hip_pitch_joint": 88.0,
+            ".*_hip_roll_joint": 139.0,
+            ".*_hip_yaw_joint": 88.0,
+            ".*_knee_joint": 139.0,
+            ".*_ankle_pitch_joint": 35.0,
+            ".*_ankle_roll_joint": 35.0,
+            "waist_yaw_joint": 88.0,
+            "waist_roll_joint": 35.0,
+            "waist_pitch_joint": 35.0,
+            ".*_shoulder_pitch_joint": 25.0,
+            ".*_shoulder_roll_joint": 25.0,
+            ".*_shoulder_yaw_joint": 25.0,
+            ".*_elbow_joint": 25.0,
+            ".*_wrist_roll_joint": 25.0,
+            ".*_wrist_pitch_joint": 5.0,
+            ".*_wrist_yaw_joint": 5.0,
+        },
+        velocity_limit_sim={
+            ".*_hip_pitch_joint": 32.0,
+            ".*_hip_roll_joint": 20.0,
+            ".*_hip_yaw_joint": 32.0,
+            ".*_knee_joint": 20.0,
+            ".*_ankle_pitch_joint": 30.0,
+            ".*_ankle_roll_joint": 30.0,
+            "waist_yaw_joint": 32.0,
+            "waist_roll_joint": 30.0,
+            "waist_pitch_joint": 30.0,
+            ".*_shoulder_pitch_joint": 37.0,
+            ".*_shoulder_roll_joint": 37.0,
+            ".*_shoulder_yaw_joint": 37.0,
+            ".*_elbow_joint": 37.0,
+            ".*_wrist_roll_joint": 37.0,
+            ".*_wrist_pitch_joint": 22.0,
+            ".*_wrist_yaw_joint": 22.0,
+        },
+        armature={
+            ".*_hip_pitch_joint": 0.03053256012,
+            ".*_hip_roll_joint": 0.075305775,
+            ".*_hip_yaw_joint": 0.03053256012,
+            ".*_knee_joint": 0.075305775,
+            ".*_ankle_pitch_joint": 0.02165835,
+            ".*_ankle_roll_joint": 0.02165835,
+            "waist_yaw_joint": 0.03053256012,
+            "waist_roll_joint": 0.02165835,
+            "waist_pitch_joint": 0.02165835,
+            ".*_shoulder_pitch_joint": 0.010829175,
+            ".*_shoulder_roll_joint": 0.010829175,
+            ".*_shoulder_yaw_joint": 0.010829175,
+            ".*_elbow_joint": 0.010829175,
+            ".*_wrist_roll_joint": 0.010829175,
+            ".*_wrist_pitch_joint": 0.01275,
+            ".*_wrist_yaw_joint": 0.01275,
+        },
+        friction=0.0,
+    ),
+
+        "hands": ImplicitActuatorCfg(
+        joint_names_expr=[".*_finger[1-5]_joint[1-4]"],
+        effort_limit_sim=30.0,
+        velocity_limit_sim=10.0,
+        stiffness=10.0,
+        damping=0.2,
+        armature=0.003,
+        friction=0.0,
+    ),
+}
+
+# Standing pose expected by the HOMIE checkpoint.
+G1_WUJI_FREE_BASE_CFG.init_state.joint_pos.update(
+    {
+        ".*_hip_pitch_joint": -0.1,
+        ".*_knee_joint": 0.3,
+        ".*_ankle_pitch_joint": -0.2,
+    }
+)
