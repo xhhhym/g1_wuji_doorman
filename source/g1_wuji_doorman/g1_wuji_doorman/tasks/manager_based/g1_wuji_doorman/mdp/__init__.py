@@ -21,6 +21,11 @@ from isaaclab.envs.mdp.terminations import (
     time_out,
 )
 
+from .actions import (
+    G1WujiDoormanAction,
+    G1WujiDoormanActionCfg,
+    compose_doorman_joint_targets,
+)
 from .rewards import joint_pos_target_l2
 
 __all__ = [
@@ -36,4 +41,7 @@ __all__ = [
     "joint_pos_target_l2",
     "JointPositionActionCfg",
     "reset_scene_to_default",
+    "G1WujiDoormanAction",
+    "G1WujiDoormanActionCfg",
+    "compose_doorman_joint_targets",
 ]
