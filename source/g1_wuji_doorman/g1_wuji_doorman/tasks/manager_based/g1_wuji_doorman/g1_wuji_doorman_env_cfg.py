@@ -25,7 +25,7 @@ from . import mdp
 # Pre-defined configs
 ##
 
-from g1_wuji_doorman.assets.robots import G1_WUJI_CFG
+from g1_wuji_doorman.assets.robots import G1_WUJI_FREE_BASE_CFG
 
 
 ##
@@ -103,7 +103,7 @@ class G1WujiDoormanSceneCfg(InteractiveSceneCfg):
     )
 
     # Robot
-    robot: ArticulationCfg = G1_WUJI_CFG.replace(
+    robot: ArticulationCfg = G1_WUJI_FREE_BASE_CFG.replace(
         prim_path="{ENV_REGEX_NS}/Robot"
     )
     # Original DoorMan starting pose: the door root is at x=0.60 m,
@@ -158,13 +158,12 @@ class G1WujiDoormanSceneCfg(InteractiveSceneCfg):
 
 @configclass
 class ActionsCfg:
-    """Temporary actions for fixed-base G1 asset inspection."""
+    """Composite high-level arm/hand action with frozen HOMIE standing."""
 
-    joint_pos = mdp.JointPositionActionCfg(
+    doorman = mdp.G1WujiDoormanActionCfg(
         asset_name="robot",
-        joint_names=[".*"],
-        scale=0.0,
-        use_default_offset=True,
+        arm_action_scale=0.25,
+        homie_decimation=4,
     )
 
 
@@ -239,10 +238,11 @@ class G1WujiDoormanEnvCfg(ManagerBasedRLEnvCfg):
     def __post_init__(self) -> None:
         """Post initialization."""
         # general settings
-        self.decimation = 2
+        # 200 Hz physics, 50 Hz HOMIE, 25 Hz high-level policy.
+        self.decimation = 8
         self.episode_length_s = 5
         # viewer settings
         self.viewer.eye = (8.0, 0.0, 5.0)
         # simulation settings
-        self.sim.dt = 1 / 120
+        self.sim.dt = 1 / 200
         self.sim.render_interval = self.decimation

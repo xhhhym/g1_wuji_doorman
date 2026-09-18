@@ -123,7 +123,42 @@ DOORMAN_WUJI_DOF_NAMES = tuple(
     for finger in range(1, 6)
     for joint in range(1, 5)
 )
-DOORMAN_ALL_DOF_NAMES = DOORMAN_BODY_DOF_NAMES + DOORMAN_WUJI_DOF_NAMES
+DOORMAN_LOWER_BODY_DOF_NAMES = DOORMAN_BODY_DOF_NAMES[:15]
+DOORMAN_LEFT_ARM_DOF_NAMES = DOORMAN_BODY_DOF_NAMES[15:22]
+DOORMAN_RIGHT_ARM_DOF_NAMES = DOORMAN_BODY_DOF_NAMES[22:29]
+DOORMAN_LEFT_HAND_DOF_NAMES = DOORMAN_WUJI_DOF_NAMES[:20]
+DOORMAN_RIGHT_HAND_DOF_NAMES = DOORMAN_WUJI_DOF_NAMES[20:]
+
+DOORMAN_CONTROL_GROUPS = (
+    DOORMAN_LOWER_BODY_DOF_NAMES,
+    DOORMAN_LEFT_ARM_DOF_NAMES,
+    DOORMAN_RIGHT_ARM_DOF_NAMES,
+    DOORMAN_LEFT_HAND_DOF_NAMES,
+    DOORMAN_RIGHT_HAND_DOF_NAMES,
+)
+
+_EXPECTED_CONTROL_GROUP_DIMS = (15, 7, 7, 20, 20)
+_CONTROL_GROUP_DIMS = tuple(len(group) for group in DOORMAN_CONTROL_GROUPS)
+
+if _CONTROL_GROUP_DIMS != _EXPECTED_CONTROL_GROUP_DIMS:
+    raise RuntimeError(
+        "Unexpected G1+Wuji control group dimensions: "
+        f"expected {_EXPECTED_CONTROL_GROUP_DIMS}, got {_CONTROL_GROUP_DIMS}."
+    )
+
+DOORMAN_ALL_DOF_NAMES = tuple(
+    joint_name
+    for group in DOORMAN_CONTROL_GROUPS
+    for joint_name in group
+)
+
+if len(DOORMAN_ALL_DOF_NAMES) != 69:
+    raise RuntimeError(
+        f"Expected 69 G1+Wuji joints, got {len(DOORMAN_ALL_DOF_NAMES)}."
+    )
+
+if len(set(DOORMAN_ALL_DOF_NAMES)) != len(DOORMAN_ALL_DOF_NAMES):
+    raise RuntimeError("G1+Wuji control groups contain duplicate joints.")
 
 _BODY_EFFORT = (
     88, 139, 88, 139, 35, 35, 88, 139, 88, 139, 35, 35, 88, 35, 35,
