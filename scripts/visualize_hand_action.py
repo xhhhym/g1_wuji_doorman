@@ -33,13 +33,19 @@ from g1_wuji_doorman.tasks.manager_based.g1_wuji_doorman import mdp
 
 PHYSICS_DT = 0.005
 HIGH_LEVEL_DECIMATION = 8
+DELTA_ACTION_SCALE = 0.3
+DELTA_ACTION_CLIP = 15.0
+ACTION_SCALE = 0.25
 
-# (label, duration in seconds, command at start, command at end)
-PHASES = (
-    ("open_hold", 1.0, -1.0, -1.0),
-    ("smooth_grasp", 2.0, -1.0, 1.0),
-    ("grasp_hold", 2.0, 1.0, 1.0),
-    ("smooth_open", 2.0, 1.0, -1.0),
+# Each tuple is (label, number of 25 Hz policy updates, delta increment).
+# 14 steps move the reset midpoint just past open; 28 steps traverse the
+# complete open-to-grasp range. A zero increment holds the accumulated target.
+INITIAL_OPEN_PHASE = ("smooth_open", 14, -1.0)
+CYCLE_PHASES = (
+    ("open_hold", 25, 0.0),
+    ("smooth_grasp", 28, 1.0),
+    ("grasp_hold", 50, 0.0),
+    ("smooth_open", 28, -1.0),
 )
 
 
@@ -90,8 +96,10 @@ def main() -> None:
 
     action_cfg = mdp.G1WujiDoormanActionCfg(
         asset_name="robot",
-        arm_action_scale=0.25,
         homie_decimation=4,
+        delta_action_scale=DELTA_ACTION_SCALE,
+        delta_action_clip=DELTA_ACTION_CLIP,
+        action_scale=ACTION_SCALE,
     )
     env_proxy = SimpleNamespace(
         scene={"robot": robot},
@@ -123,30 +131,49 @@ def main() -> None:
         raise RuntimeError("Left-hand joint order mismatch.")
 
     action = torch.zeros(1, 8, device=sim.device)
+    action_manager.process_action(action)
+    initial_targets = action_manager.get_term(
+        "doorman"
+    ).processed_actions.clone()
+    robot.write_joint_state_to_sim(
+        initial_targets,
+        torch.zeros_like(initial_targets),
+        joint_ids=all_joint_ids,
+    )
+    robot.set_joint_position_target(
+        initial_targets,
+        joint_ids=all_joint_ids,
+    )
+    robot.write_data_to_sim()
+    robot.update(PHYSICS_DT)
+
     max_abs_joint_velocity = 0.0
     max_abs_hand_velocity = 0.0
 
-    for cycle in range(args_cli.cycles):
-        for label, duration, command_start, command_end in PHASES:
-            print(
-                f"HAND_VISUAL_PHASE cycle={cycle + 1} "
-                f"phase={label}",
-                flush=True,
-            )
-            phase_steps = max(1, round(duration / PHYSICS_DT))
+    phases = (INITIAL_OPEN_PHASE,) + CYCLE_PHASES * args_cli.cycles
+    for phase_index, (label, policy_updates, hand_increment) in enumerate(
+        phases
+    ):
+        cycle = (
+            1
+            if phase_index == 0
+            else (phase_index - 1) // len(CYCLE_PHASES) + 1
+        )
+        print(
+            f"HAND_VISUAL_PHASE cycle={min(cycle, args_cli.cycles)} "
+            f"phase={label}",
+            flush=True,
+        )
+        action[:, -1] = hand_increment
 
-            for step in range(phase_steps):
+        for _ in range(policy_updates):
+            if not simulation_app.is_running():
+                return
+
+            action_manager.process_action(action)
+            for _ in range(HIGH_LEVEL_DECIMATION):
                 if not simulation_app.is_running():
                     return
-
-                if step % HIGH_LEVEL_DECIMATION == 0:
-                    progress = step / max(1, phase_steps - 1)
-                    hand_command = (
-                        command_start
-                        + (command_end - command_start) * progress
-                    )
-                    action[:, -1] = hand_command
-                    action_manager.process_action(action)
 
                 action_manager.apply_action()
                 robot.write_data_to_sim()
@@ -180,6 +207,14 @@ def main() -> None:
                     .max()
                     .item(),
                 )
+
+        print(
+            "HAND_VISUAL_DELTA "
+            f"phase={label} "
+            "cumulative_hand="
+            f"{action_manager.get_term('doorman').delta_actions[0, -1].item():.3f}",
+            flush=True,
+        )
 
     print(
         "HAND_VISUAL_PASS "

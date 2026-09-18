@@ -162,8 +162,10 @@ class ActionsCfg:
 
     doorman = mdp.G1WujiDoormanActionCfg(
         asset_name="robot",
-        arm_action_scale=0.25,
         homie_decimation=4,
+        delta_action_scale=0.3,
+        delta_action_clip=15.0,
+        action_scale=0.25,
     )
 
 
