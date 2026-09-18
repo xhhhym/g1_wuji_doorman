@@ -56,7 +56,7 @@ def compose_doorman_joint_targets(
     left_arm_actions: torch.Tensor,
     left_hand_targets: torch.Tensor,
     right_hand_rest_pose: torch.Tensor,
-    arm_action_scale: float,
+    action_scale: float,
     lower_body_targets: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """Merge controller outputs into ordered, limit-safe 69D targets."""
@@ -110,7 +110,7 @@ def compose_doorman_joint_targets(
         targets[:, LOWER_BODY_SLICE] = lower_body_targets
     targets[:, LEFT_ARM_SLICE] = (
         default_joint_targets[:, LEFT_ARM_SLICE]
-        + arm_action_scale * left_arm_actions.clamp(-1.0, 1.0)
+        + action_scale * left_arm_actions
     )
     targets[:, LEFT_HAND_SLICE] = left_hand_targets
     targets[:, RIGHT_HAND_SLICE] = right_hand_rest_pose
@@ -221,6 +221,13 @@ class G1WujiDoormanAction(ActionTerm):
             + self._hand_controller.command_dim
         )
 
+        if cfg.delta_action_scale <= 0.0:
+            raise ValueError("delta_action_scale must be positive.")
+        if cfg.delta_action_clip <= 0.0:
+            raise ValueError("delta_action_clip must be positive.")
+        if cfg.action_scale <= 0.0:
+            raise ValueError("action_scale must be positive.")
+
         self._right_hand_rest_pose = torch.tensor(
             WUJI_HAND_REST_POSE,
             dtype=torch.float32,
@@ -245,6 +252,8 @@ class G1WujiDoormanAction(ActionTerm):
             self.action_dim,
             device=self.device,
         )
+        self._delta_actions = torch.zeros_like(self._raw_actions)
+        self._last_delta_actions = torch.zeros_like(self._raw_actions)
         self._processed_actions = self._default_joint_targets.clone()
         self._set_right_hand_rest_pose()
         self._clamp_joint_targets()
@@ -265,6 +274,16 @@ class G1WujiDoormanAction(ActionTerm):
         return self._processed_actions
 
     @property
+    def delta_actions(self) -> torch.Tensor:
+        """DoorMan-style cumulative policy actions."""
+        return self._delta_actions
+
+    @property
+    def last_delta_actions(self) -> torch.Tensor:
+        """Most recent unaccumulated policy increments."""
+        return self._last_delta_actions
+
+    @property
     def hand_controller(self) -> HandController:
         """Selected interchangeable hand-control backend."""
         return self._hand_controller
@@ -282,7 +301,7 @@ class G1WujiDoormanAction(ActionTerm):
                 left_arm_actions=self._left_arm_actions,
                 left_hand_targets=self._left_hand_targets,
                 right_hand_rest_pose=self._right_hand_rest_pose,
-                arm_action_scale=self.cfg.arm_action_scale,
+                action_scale=self.cfg.action_scale,
                 lower_body_targets=self._lower_body_targets,
             )
         )
@@ -329,7 +348,7 @@ class G1WujiDoormanAction(ActionTerm):
         )
 
     def process_actions(self, actions: torch.Tensor) -> None:
-        """Process arm residuals and backend-specific hand commands."""
+        """Accumulate DoorMan delta actions and build physical targets."""
         expected_shape = (self.num_envs, self.action_dim)
         if actions.shape != expected_shape:
             raise ValueError(
@@ -338,9 +357,21 @@ class G1WujiDoormanAction(ActionTerm):
             )
 
         self._raw_actions.copy_(actions)
+        self._last_delta_actions.copy_(actions)
+        self._delta_actions.add_(
+            actions,
+            alpha=self.cfg.delta_action_scale,
+        )
+        self._delta_actions.clamp_(
+            min=-self.cfg.delta_action_clip,
+            max=self.cfg.delta_action_clip,
+        )
+
         arm_dim = len(DOORMAN_LEFT_ARM_DOF_NAMES)
-        self._left_arm_actions.copy_(self._raw_actions[:, :arm_dim])
-        hand_command = self._raw_actions[:, arm_dim:]
+        self._left_arm_actions.copy_(self._delta_actions[:, :arm_dim])
+        hand_command = (
+            self._delta_actions[:, arm_dim:] * self.cfg.action_scale
+        )
         self._left_hand_targets.copy_(
             self._hand_controller.compute_joint_targets(hand_command)
         )
@@ -377,6 +408,8 @@ class G1WujiDoormanAction(ActionTerm):
             )[controller_env_ids]
 
         self._raw_actions[env_ids] = 0.0
+        self._delta_actions[env_ids] = 0.0
+        self._last_delta_actions[env_ids] = 0.0
         self._left_arm_actions[env_ids] = 0.0
         self._left_hand_targets[env_ids] = self._default_joint_targets[
             env_ids,
@@ -405,4 +438,6 @@ class G1WujiDoormanActionCfg(ActionTermCfg):
     hand_controller_type: type[HandController] = PrimitiveHandController
     homie_controller_type: type[HomieController] | None = HomieController
     homie_decimation: int = 4
-    arm_action_scale: float = 0.25
+    delta_action_scale: float = 0.3
+    delta_action_clip: float = 15.0
+    action_scale: float = 0.25

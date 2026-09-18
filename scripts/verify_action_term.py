@@ -45,6 +45,9 @@ from g1_wuji_doorman.tasks.manager_based.g1_wuji_doorman import mdp
 
 
 PHYSICS_DT = 0.005
+DELTA_ACTION_SCALE = 0.3
+DELTA_ACTION_CLIP = 15.0
+ACTION_SCALE = 0.25
 
 
 def _hand_test_targets(device: torch.device | str) -> torch.Tensor:
@@ -73,16 +76,19 @@ def _make_action(
     test_index: int,
     hand_targets: torch.Tensor,
 ) -> torch.Tensor:
-    """Create one policy action for a requested hand test state."""
+    """Create one delta action that reaches a requested hand test state."""
+    delta_to_target_scale = DELTA_ACTION_SCALE * ACTION_SCALE
     if backend == "primitive":
         actions = torch.zeros(1, 8, device=hand_targets.device)
-        actions[:, -1] = (-1.0, 0.0, 1.0)[test_index]
+        actions[:, -1] = (
+            (-1.0, 0.0, 1.0)[test_index] / delta_to_target_scale
+        )
         return actions
 
     actions = torch.zeros(1, 27, device=hand_targets.device)
-    actions[:, len(DOORMAN_LEFT_ARM_DOF_NAMES):] = hand_targets[
-        test_index
-    ]
+    actions[:, len(DOORMAN_LEFT_ARM_DOF_NAMES):] = (
+        hand_targets[test_index] / delta_to_target_scale
+    )
     return actions
 
 
@@ -120,8 +126,10 @@ def main() -> None:
     action_cfg = mdp.G1WujiDoormanActionCfg(
         asset_name="robot",
         hand_controller_type=backend_types[args_cli.hand_backend],
-        arm_action_scale=0.25,
         homie_decimation=4,
+        delta_action_scale=DELTA_ACTION_SCALE,
+        delta_action_clip=DELTA_ACTION_CLIP,
+        action_scale=ACTION_SCALE,
     )
     env_proxy = SimpleNamespace(
         scene={"robot": robot},
@@ -167,6 +175,7 @@ def main() -> None:
 
     actual_hand_targets = []
     for test_index in range(3):
+        action_manager.reset()
         actions = _make_action(
             args_cli.hand_backend,
             test_index,
@@ -174,6 +183,19 @@ def main() -> None:
         )
         action_manager.process_action(actions)
         targets = action_term.processed_actions
+
+        torch.testing.assert_close(
+            action_term.last_delta_actions,
+            actions,
+        )
+        torch.testing.assert_close(
+            action_term.delta_actions,
+            torch.clamp(
+                actions * DELTA_ACTION_SCALE,
+                min=-DELTA_ACTION_CLIP,
+                max=DELTA_ACTION_CLIP,
+            ),
+        )
 
         if targets.shape != (1, 69):
             raise RuntimeError(
@@ -208,8 +230,37 @@ def main() -> None:
     )
 
     action_manager.reset()
+    unit_increment = torch.zeros(
+        1,
+        action_term.action_dim,
+        device=sim.device,
+    )
+    unit_increment[:, 0] = 1.0
+    action_manager.process_action(unit_increment)
+    torch.testing.assert_close(
+        action_term.delta_actions[:, 0],
+        torch.tensor([0.3], device=sim.device),
+    )
+    action_manager.process_action(unit_increment)
+    torch.testing.assert_close(
+        action_term.delta_actions[:, 0],
+        torch.tensor([0.6], device=sim.device),
+    )
+    clipping_increment = unit_increment.clone()
+    clipping_increment[:, 0] = 100.0
+    action_manager.process_action(clipping_increment)
+    torch.testing.assert_close(
+        action_term.delta_actions[:, 0],
+        torch.tensor([DELTA_ACTION_CLIP], device=sim.device),
+    )
+
+    action_manager.reset()
     if not torch.all(action_term.raw_actions == 0.0):
         raise RuntimeError("Raw action buffer was not cleared on reset.")
+    if not torch.all(action_term.delta_actions == 0.0):
+        raise RuntimeError("Cumulative delta buffer was not cleared on reset.")
+    if not torch.all(action_term.last_delta_actions == 0.0):
+        raise RuntimeError("Last delta buffer was not cleared on reset.")
     if action_term.homie_controller is None:
         raise RuntimeError("HOMIE was not connected to the action term.")
 

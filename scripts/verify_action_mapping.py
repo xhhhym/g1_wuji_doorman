@@ -38,12 +38,12 @@ from g1_wuji_doorman.tasks.manager_based.g1_wuji_doorman.mdp.actions import (
 
 
 NUM_ENVS = 2
-ARM_SCALE = 0.25
+ACTION_SCALE = 0.25
 
 
 def _compose(
     controller,
-    policy_actions: torch.Tensor,
+    cumulative_actions: torch.Tensor,
     default_targets: torch.Tensor,
     limits: torch.Tensor,
     right_hand_rest: torch.Tensor,
@@ -51,15 +51,15 @@ def _compose(
 ) -> torch.Tensor:
     arm_dim = len(DOORMAN_LEFT_ARM_DOF_NAMES)
     hand_targets = controller.compute_joint_targets(
-        policy_actions[:, arm_dim:]
+        cumulative_actions[:, arm_dim:] * ACTION_SCALE
     )
     return compose_doorman_joint_targets(
         default_joint_targets=default_targets,
         soft_joint_pos_limits=limits,
-        left_arm_actions=policy_actions[:, :arm_dim],
+        left_arm_actions=cumulative_actions[:, :arm_dim],
         left_hand_targets=hand_targets,
         right_hand_rest_pose=right_hand_rest,
-        arm_action_scale=ARM_SCALE,
+        action_scale=ACTION_SCALE,
         lower_body_targets=lower_targets,
     )
 
