@@ -1,3 +1,7 @@
+# G1 + Wuji DoorMan
+
+DoorMan 风格 teacher 特权观测与阶段奖励已接入；本地 2 环境 PPO 冒烟训练通过。复现命令、接口和验证范围见 [STAGED_MDP_SMOKE.md](docs/STAGED_MDP_SMOKE.md)。
+
 # Template for Isaac Lab Projects
 
 ## Overview

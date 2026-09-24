@@ -15,6 +15,7 @@ from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.scene import InteractiveSceneCfg
+from isaaclab.sensors import ContactSensorCfg
 from isaaclab.utils import configclass
 from isaaclab.actuators import ImplicitActuatorCfg
 from g1_wuji_doorman.assets.door import DoorSpawnerCfg, spawn_door
@@ -34,6 +35,7 @@ from g1_wuji_doorman.assets.robots import G1_WUJI_FREE_BASE_CFG
 
 DOOR_SPAWNER_CFG = DoorSpawnerCfg(
     func=spawn_door,
+    activate_contact_sensors=True,
 
     articulation_props=sim_utils.ArticulationRootPropertiesCfg(
         fix_root_link=True,
@@ -141,6 +143,13 @@ class G1WujiDoormanSceneCfg(InteractiveSceneCfg):
         },
     )
 
+    # A single handle body filtered against 25 separate hand links (one-to-many).
+    handle_contacts = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Door/door_handle",
+        update_period=0.0,
+        filter_prim_paths_expr=["{ENV_REGEX_NS}/Robot/" + link for link in mdp.FINGER_LINKS],
+    )
+
     # Lights
     dome_light = AssetBaseCfg(
         prim_path="/World/DomeLight",
@@ -170,23 +179,42 @@ class ActionsCfg:
 
 
 @configclass
+class CommandsCfg:
+    door_task = mdp.DoorTaskStateCfg()
+
+
+@configclass
 class ObservationsCfg:
-    """Observation specifications for the MDP."""
+    """DoorMan-style teacher actor and asymmetric privileged critic."""
 
     @configclass
     class PolicyCfg(ObsGroup):
-        """Observations for policy group."""
+        stage = ObsTerm(func=mdp.door_task_observation, params={"name": "stage"})
+        gravity = ObsTerm(func=mdp.door_task_observation, params={"name": "gravity"})
+        base_ang_vel = ObsTerm(func=mdp.door_task_observation, params={"name": "base_ang_vel"})
+        base_lin_vel = ObsTerm(func=mdp.door_task_observation, params={"name": "base_lin_vel"})
+        root_in_door = ObsTerm(func=mdp.door_task_observation, params={"name": "root_in_door"})
+        arm_pos = ObsTerm(func=mdp.door_task_observation, params={"name": "arm_pos"})
+        arm_vel = ObsTerm(func=mdp.door_task_observation, params={"name": "arm_vel"})
+        hand_pos = ObsTerm(func=mdp.door_task_observation, params={"name": "hand_pos"})
+        hand_vel = ObsTerm(func=mdp.door_task_observation, params={"name": "hand_vel"})
+        target_in_palm = ObsTerm(func=mdp.door_task_observation, params={"name": "target_in_palm"})
+        door_state = ObsTerm(func=mdp.door_task_observation, params={"name": "door_state"})
+        tip_forces = ObsTerm(func=mdp.door_task_observation, params={"name": "tip_forces"})
+        privileged_door_info = ObsTerm(func=mdp.door_task_observation, params={"name": "privileged_door_info"})
+        last_action = ObsTerm(func=mdp.door_task_observation, params={"name": "last_action"})
 
-        # observation terms (order preserved)
-        joint_pos_rel = ObsTerm(func=mdp.joint_pos_rel)
-        joint_vel_rel = ObsTerm(func=mdp.joint_vel_rel)
-
-        def __post_init__(self) -> None:
+        def __post_init__(self):
             self.enable_corruption = False
             self.concatenate_terms = True
 
-    # observation groups
+    @configclass
+    class CriticCfg(PolicyCfg):
+        full_handle_contact = ObsTerm(func=mdp.door_task_observation, params={"name": "full_handle_contact"})
+        teacher_task_state = ObsTerm(func=mdp.door_task_observation, params={"name": "teacher_task_state"})
+
     policy: PolicyCfg = PolicyCfg()
+    critic: CriticCfg = CriticCfg()
 
 
 @configclass
@@ -203,20 +231,40 @@ class EventCfg:
 
 @configclass
 class RewardsCfg:
-    """Reward terms for the MDP."""
-
-    # (1) Constant running reward
-    alive = RewTerm(func=mdp.is_alive, weight=1.0)
-    # (2) Failure penalty
-    terminating = RewTerm(func=mdp.is_terminated, weight=-2.0)
-   
+    """Initial smoke-training weights; progress/bonus terms account for step_dt."""
+    reach = RewTerm(func=mdp.door_task_reward, weight=4.0, params={"name": "reach"})
+    align = RewTerm(func=mdp.door_task_reward, weight=1.0, params={"name": "align"})
+    open_hand = RewTerm(func=mdp.door_task_reward, weight=0.5, params={"name": "open_hand"})
+    contact = RewTerm(func=mdp.door_task_reward, weight=2.0, params={"name": "contact"})
+    closure = RewTerm(func=mdp.door_task_reward, weight=0.5, params={"name": "closure"})
+    handle_amount = RewTerm(func=mdp.door_task_reward, weight=1.0, params={"name": "handle_amount"})
+    handle_progress = RewTerm(func=mdp.door_task_reward, weight=2.0, params={"name": "handle_progress"})
+    handle_regression = RewTerm(func=mdp.door_task_reward, weight=-2.0, params={"name": "handle_regression"})
+    latch = RewTerm(func=mdp.door_task_reward, weight=0.5, params={"name": "latch"})
+    door_progress = RewTerm(func=mdp.door_task_reward, weight=5.0, params={"name": "door_progress"})
+    door_amount = RewTerm(func=mdp.door_task_reward, weight=0.5, params={"name": "door_amount"})
+    door_regression = RewTerm(func=mdp.door_task_reward, weight=-5.0, params={"name": "door_regression"})
+    held_open = RewTerm(func=mdp.door_task_reward, weight=1.0, params={"name": "held_open"})
+    transition = RewTerm(func=mdp.door_task_reward, weight=2.0, params={"name": "transition"})
+    success = RewTerm(func=mdp.door_task_reward, weight=10.0, params={"name": "success"})
+    failure = RewTerm(func=mdp.door_task_reward, weight=-5.0, params={"name": "failure"})
+    upright = RewTerm(func=mdp.door_task_reward, weight=-2.0, params={"name": "upright"})
+    base_drift = RewTerm(func=mdp.door_task_reward, weight=-1.0, params={"name": "base_drift"})
+    right_arm_rest = RewTerm(func=mdp.door_task_reward, weight=-0.1, params={"name": "right_arm_rest"})
+    action_rate = RewTerm(func=mdp.door_task_reward, weight=-0.01, params={"name": "action_rate"})
+    joint_velocity = RewTerm(func=mdp.door_task_reward, weight=-0.0001, params={"name": "joint_velocity"})
+    joint_limits = RewTerm(func=mdp.door_task_reward, weight=-1.0, params={"name": "joint_limits"})
+    excess_force = RewTerm(func=mdp.door_task_reward, weight=-0.1, params={"name": "excess_force"})
+    lost_contact = RewTerm(func=mdp.door_task_reward, weight=-0.5, params={"name": "lost_contact"})
 
 
 @configclass
 class TerminationsCfg:
-    """Termination terms for the MDP."""
-
-    # (1) Time out
+    # MUST remain first: refresh task state before remaining terminations/rewards.
+    invalid_state = DoneTerm(func=mdp.task_invalid_state)
+    fall = DoneTerm(func=mdp.task_fall)
+    success = DoneTerm(func=mdp.task_success)
+    stage_timeout = DoneTerm(func=mdp.task_stage_timeout, time_out=True)
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
 
 ##
@@ -231,6 +279,7 @@ class G1WujiDoormanEnvCfg(ManagerBasedRLEnvCfg):
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
+    commands: CommandsCfg = CommandsCfg()
     events: EventCfg = EventCfg()
     # MDP settings
     rewards: RewardsCfg = RewardsCfg()
@@ -242,7 +291,7 @@ class G1WujiDoormanEnvCfg(ManagerBasedRLEnvCfg):
         # general settings
         # 200 Hz physics, 50 Hz HOMIE, 25 Hz high-level policy.
         self.decimation = 8
-        self.episode_length_s = 5
+        self.episode_length_s = 30
         # viewer settings
         self.viewer.eye = (8.0, 0.0, 5.0)
         # simulation settings

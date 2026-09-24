@@ -64,7 +64,19 @@ class HomieController:
                 "HOMIE checkpoint has no model_state_dict."
             )
 
-        full_model = HIMActorCritic(**init_actor_critic_dict)
+        # Legacy HOMIE assigns Normal.set_default_validate_args = False, which
+        # destroys the callable needed by RSL-RL. Isolate that constructor's
+        # global side effect without changing upstream code or policy weights.
+        normal_type = torch.distributions.Normal
+        previous_descriptor = normal_type.__dict__.get("set_default_validate_args")
+        try:
+            full_model = HIMActorCritic(**init_actor_critic_dict)
+        finally:
+            if previous_descriptor is None:
+                if "set_default_validate_args" in normal_type.__dict__:
+                    delattr(normal_type, "set_default_validate_args")
+            else:
+                normal_type.set_default_validate_args = previous_descriptor
         full_model.load_state_dict(state_dict)
 
         self.policy = HomieActorModule(full_model).to(self.device)

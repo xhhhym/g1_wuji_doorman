@@ -45,3 +45,13 @@ __all__ = [
     "G1WujiDoormanActionCfg",
     "compose_doorman_joint_targets",
 ]
+
+from .commands import DoorTaskStateCfg, FINGER_LINKS
+from .observations import door_task_observation
+from .task_rewards import door_task_reward
+from .terminations import task_invalid_state, task_fall, task_success, task_stage_timeout
+
+__all__ += [
+    "DoorTaskStateCfg", "FINGER_LINKS", "door_task_observation", "door_task_reward",
+    "task_invalid_state", "task_fall", "task_success", "task_stage_timeout",
+]
