@@ -112,6 +112,7 @@ class HomieController:
             device=self.device,
         )
 
+        self.invalid_state = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
         self._last_action = torch.zeros(
             self.num_envs,
             self.cfg.num_actions,
@@ -144,6 +145,7 @@ class HomieController:
         """Clear history and previous actions for selected environments."""
 
         if env_ids is None:
+            self.invalid_state.zero_()
             self._history.zero_()
             self._last_action.zero_()
             self._command.zero_()
@@ -155,6 +157,7 @@ class HomieController:
             dtype=torch.long,
             device=self.device,
         )
+        self.invalid_state[env_ids_tensor] = False
         self._history[env_ids_tensor] = 0.0
         self._last_action[env_ids_tensor] = 0.0
         self._command[env_ids_tensor] = 0.0
@@ -165,8 +168,9 @@ class HomieController:
         name: str,
         value: torch.Tensor,
         width: int,
+        batch_size: int | None = None,
     ) -> None:
-        expected_shape = (self.num_envs, width)
+        expected_shape = (self.num_envs if batch_size is None else batch_size, width)
 
         if value.shape != expected_shape:
             raise ValueError(
@@ -185,43 +189,48 @@ class HomieController:
         joint_vel: torch.Tensor,
         base_ang_vel: torch.Tensor,
         projected_gravity: torch.Tensor,
+        env_ids: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Build one 86-dimensional observation frame."""
 
+        if env_ids is None:
+            env_ids = torch.arange(self.num_envs, device=self.device)
+        batch_size = env_ids.numel()
         self._check_input(
             "joint_pos",
             joint_pos,
             len(HOMIE_OBS_JOINT_ORDER),
+            batch_size,
         )
         self._check_input(
             "joint_vel",
             joint_vel,
             len(HOMIE_OBS_JOINT_ORDER),
+            batch_size,
         )
-        self._check_input("base_ang_vel", base_ang_vel, 3)
-        self._check_input("projected_gravity", projected_gravity, 3)
+        self._check_input("base_ang_vel", base_ang_vel, 3, batch_size)
+        self._check_input("projected_gravity", projected_gravity, 3, batch_size)
 
         frame = torch.cat(
             (
-                self._command,
+                self._command[env_ids],
                 base_ang_vel * 0.5,
                 projected_gravity,
-                joint_pos - self._default_joint_pos,
+                joint_pos - self._default_joint_pos[env_ids],
                 joint_vel * 0.05,
-                self._last_action,
+                self._last_action[env_ids],
             ),
             dim=-1,
         )
 
-        if frame.shape != (self.num_envs, self.cfg.frame_dim):
+        if frame.shape != (batch_size, self.cfg.frame_dim):
             raise RuntimeError(
                 f"Constructed HOMIE frame has shape {tuple(frame.shape)}."
             )
 
-        if not torch.isfinite(frame).all():
-            raise RuntimeError("HOMIE observation contains NaN or Inf.")
-
-        return frame
+        invalid = ~torch.isfinite(frame).all(dim=-1)
+        self.invalid_state[env_ids] |= invalid
+        return torch.where(invalid[:, None], 0.0, frame)
 
     def compute_joint_targets(
         self,
@@ -229,36 +238,37 @@ class HomieController:
         joint_vel: torch.Tensor,
         base_ang_vel: torch.Tensor,
         projected_gravity: torch.Tensor,
+        env_ids: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Run HOMIE and return targets for the 15 leg/waist joints."""
 
+        if env_ids is None:
+            env_ids = torch.arange(self.num_envs, device=self.device)
         frame = self.build_frame(
             joint_pos=joint_pos,
             joint_vel=joint_vel,
             base_ang_vel=base_ang_vel,
             projected_gravity=projected_gravity,
+            env_ids=env_ids,
         )
 
-        self._history[:, :-1].copy_(
-            self._history[:, 1:].clone()
-        )
-        self._history[:, -1].copy_(frame)
+        self._history[env_ids, :-1] = self._history[env_ids, 1:].clone()
+        self._history[env_ids, -1] = frame
 
         with torch.inference_mode():
-            output = self.policy(self.observation_history)
+            output = self.policy(self._history[env_ids].flatten(1))
             action = output["actions"]
 
-        if action.shape != (self.num_envs, self.cfg.num_actions):
+        if action.shape != (env_ids.numel(), self.cfg.num_actions):
             raise RuntimeError(
                 f"HOMIE returned action shape {tuple(action.shape)}."
             )
 
-        if not torch.isfinite(action).all():
-            raise RuntimeError("HOMIE action contains NaN or Inf.")
-
-        self._last_action.copy_(action)
+        self.invalid_state[env_ids] |= ~torch.isfinite(action).all(dim=-1)
+        action = torch.where(self.invalid_state[env_ids, None], 0.0, action)
+        self._last_action[env_ids] = action
 
         return (
-            self._default_joint_pos[:, : self.cfg.num_actions]
+            self._default_joint_pos[env_ids, : self.cfg.num_actions]
             + self.cfg.action_scale * action
         )

@@ -274,5 +274,12 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
-    simulation_app.close()
+    try:
+        main()
+    finally:
+        # Unsubscribe Isaac Lab's stop callback before SimulationApp closes.
+        sim = SimulationContext.instance()
+        if sim is not None:
+            sim.clear_all_callbacks()
+            sim.clear_instance()
+        simulation_app.close()

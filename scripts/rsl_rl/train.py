@@ -121,6 +121,21 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         args_cli.max_iterations if args_cli.max_iterations is not None else agent_cfg.max_iterations
     )
 
+    # Recurrent RSL-RL batches partition environments (not individual transitions).
+    # Choose a divisor so small smoke runs neither create empty batches nor drop envs.
+    if getattr(getattr(agent_cfg, "policy", None), "class_name", "") == "ActorCriticRecurrent":
+        requested_batches = agent_cfg.algorithm.num_mini_batches
+        if requested_batches < 1:
+            raise ValueError("num_mini_batches must be positive")
+        effective_batches = max(
+            n for n in range(1, min(requested_batches, env_cfg.scene.num_envs) + 1)
+            if env_cfg.scene.num_envs % n == 0
+        )
+        if effective_batches != requested_batches:
+            logger.warning("Recurrent minibatches: %s -> %s for %s environments",
+                           requested_batches, effective_batches, env_cfg.scene.num_envs)
+        agent_cfg.algorithm.num_mini_batches = effective_batches
+
     # set the environment seed
     # note: certain randomizations occur in the environment initialization so we set the seed here
     env_cfg.seed = agent_cfg.seed

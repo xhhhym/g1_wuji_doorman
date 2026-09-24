@@ -24,16 +24,24 @@ def door_task_observation(env, name: str):
     elif name == "target_in_palm":
         value = task.target_in_palm
     elif name == "door_state":
-        value = task.door_state * task.door_state.new_tensor([1, 0.1, 1, 0.1, 1 / 0.03])
+        value = task.door_state.clone()
+        value[:, [1, 3]] *= 0.1
+        value[:, 4] /= task.latch_travel
     elif name == "tip_forces":
         value = task.tip_forces.clamp(0, 50) / 50
-    elif name == "last_action":
-        value = env.action_manager.action
+    elif name == "finger_forces":
+        value = task.finger_forces.clamp(0, 50) / 50
+    elif name == "actions":
+        # Original DoorMan: controller-space commands, before primitive expansion.
+        value = env.action_manager.get_term("doorman").controller_actions
+    elif name == "delta_actions":
+        # Original _get_obs_delta_actions returns the raw increment, not its integral.
+        value = env.action_manager.get_term("doorman").last_delta_actions
     elif name == "privileged_door_info":
         value = task.privileged_door_info
     elif name == "full_handle_contact":
         # Exact filtered world-frame forces for all 25 left-hand links.
-        value = env.scene["handle_contacts"].data.force_matrix_w[:, 0].flatten(1) * 0.01
+        value = task.contact_forces_w.flatten(1) * 0.01
     elif name == "teacher_task_state":
         stage_timeout = task._timeouts[task.stage]
         value = torch.stack(
@@ -49,4 +57,6 @@ def door_task_observation(env, name: str):
     else:
         raise ValueError(name)
     # Invalid physical states terminate before PPO receives the next observation.
-    return torch.nan_to_num(value, nan=0, posinf=10, neginf=-10).clamp(-10, 10)
+    # DoorMan action observations use scale=1; do not erase cumulative values 10..15.
+    bound = 100 if name in ("actions", "delta_actions") else 10
+    return torch.nan_to_num(value, nan=0, posinf=bound, neginf=-bound).clamp(-bound, bound)

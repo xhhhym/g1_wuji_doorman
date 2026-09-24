@@ -5,7 +5,7 @@
 
 from isaaclab.utils import configclass
 
-from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlPpoActorCriticCfg, RslRlPpoAlgorithmCfg
+from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlPpoActorCriticRecurrentCfg, RslRlPpoAlgorithmCfg
 
 
 @configclass
@@ -16,13 +16,18 @@ class PPORunnerCfg(RslRlOnPolicyRunnerCfg):
     save_interval = 50
     experiment_name = "g1_wuji_doorman"
     obs_groups = {"policy": ["policy"], "critic": ["critic"]}
-    policy = RslRlPpoActorCriticCfg(
+    policy = RslRlPpoActorCriticRecurrentCfg(
         init_noise_std=0.3,
         actor_obs_normalization=True,
         critic_obs_normalization=True,
-        actor_hidden_dims=[128, 128],
-        critic_hidden_dims=[128, 128],
-        activation="elu",
+        actor_hidden_dims=[512, 256, 128],
+        critic_hidden_dims=[512, 256, 128],
+        # DoorMan teacher: separate two-layer, 256-unit LSTMs before the MLPs.
+        # RSL-RL calls PyTorch SiLU "swish".
+        activation="swish",
+        rnn_type="lstm",
+        rnn_hidden_dim=256,
+        rnn_num_layers=2,
     )
     algorithm = RslRlPpoAlgorithmCfg(
         value_loss_coef=1.0,

@@ -1,5 +1,8 @@
 # G1 + Wuji DoorMan：观测与奖励冒烟基线
 
+> 2026-09-25 更新：本文记录旧111/191维MLP冒烟基线。当前已改为139/219维LSTM；实现、修正及验证见 [DOORMAN_RECURRENT_ALIGNMENT.md](DOORMAN_RECURRENT_ALIGNMENT.md)。
+
+
 2026-09-24：本地 RTX 4070、`doorman` Conda 环境、2 个并行环境完成 10 次 PPO 更新。
 当前配置是 DoorMan 风格 privileged teacher policy 的训练链路验证，策略尚未学会抓握或开门。
 当前固定从 PREGRASP 初始状态 reset。

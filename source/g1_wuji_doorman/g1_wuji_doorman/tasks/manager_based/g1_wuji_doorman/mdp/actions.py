@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 import torch
@@ -32,6 +33,7 @@ from g1_wuji_doorman.controllers.hand import (
 from g1_wuji_doorman.controllers.standing import (
     HOMIE_OBS_JOINT_ORDER,
     HomieController,
+    HomieControllerCfg,
 )
 
 if TYPE_CHECKING:
@@ -212,6 +214,8 @@ class G1WujiDoormanAction(ActionTerm):
             self._homie_controller = homie_controller_type(
                 num_envs=self.num_envs,
                 device=self.device,
+                cfg=(replace(HomieControllerCfg(), checkpoint_path=cfg.homie_checkpoint_path)
+                     if cfg.homie_checkpoint_path else None),
             )
         else:
             self._homie_controller = None
@@ -245,8 +249,9 @@ class G1WujiDoormanAction(ActionTerm):
         self._left_hand_targets = self._default_joint_targets[
             :, LEFT_HAND_SLICE
         ].clone()
-        self._homie_step_counter = 0
+        self._homie_step_counter = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
 
+        self.invalid_state = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
         self._raw_actions = torch.zeros(
             self.num_envs,
             self.action_dim,
@@ -293,6 +298,17 @@ class G1WujiDoormanAction(ActionTerm):
         """Frozen standing controller, or ``None`` in mapping-only tests."""
         return self._homie_controller
 
+    @property
+    def controller_actions(self) -> torch.Tensor:
+        """DoorMan `actions`: unscaled HOMIE outputs plus accumulated arm/hand commands.
+
+        Inactive right arm/hand and locomotion channels are omitted. The primitive
+        command is represented before its physical interpolation, as in DoorMan.
+        """
+        lower = (self._homie_controller.last_action if self._homie_controller is not None
+                 else torch.zeros(self.num_envs, len(DOORMAN_LOWER_BODY_DOF_NAMES), device=self.device))
+        return torch.cat((lower, self._delta_actions), dim=-1)
+
     def _refresh_processed_actions(self) -> None:
         self._processed_actions.copy_(
             compose_doorman_joint_targets(
@@ -306,22 +322,25 @@ class G1WujiDoormanAction(ActionTerm):
             )
         )
 
-    def _update_homie_targets(self) -> None:
+    def _update_homie_targets(self, env_ids: torch.Tensor) -> None:
         if self._homie_controller is None:
             return
 
-        self._lower_body_targets.copy_(
+        self._lower_body_targets[env_ids] = (
             self._homie_controller.compute_joint_targets(
                 joint_pos=self._asset.data.joint_pos[
-                    :, self._homie_joint_ids
+                    env_ids[:, None], self._homie_joint_ids
                 ],
                 joint_vel=self._asset.data.joint_vel[
-                    :, self._homie_joint_ids
+                    env_ids[:, None], self._homie_joint_ids
                 ],
-                base_ang_vel=self._asset.data.root_ang_vel_b,
-                projected_gravity=self._asset.data.projected_gravity_b,
+                base_ang_vel=self._asset.data.root_ang_vel_b[env_ids],
+                projected_gravity=self._asset.data.projected_gravity_b[env_ids],
+                env_ids=env_ids,
             )
         )
+
+        self.invalid_state |= self._homie_controller.invalid_state
 
     def _set_right_hand_rest_pose(
         self,
@@ -356,6 +375,10 @@ class G1WujiDoormanAction(ActionTerm):
                 f"got {tuple(actions.shape)}."
             )
 
+        invalid = ~torch.isfinite(actions).all(dim=-1)
+        self.invalid_state |= invalid
+        # Keep bad policy values out of the physics engine; terminate the affected env.
+        actions = torch.where(invalid[:, None], 0.0, actions)
         self._raw_actions.copy_(actions)
         self._last_delta_actions.copy_(actions)
         self._delta_actions.add_(
@@ -379,8 +402,9 @@ class G1WujiDoormanAction(ActionTerm):
 
     def apply_actions(self) -> None:
         """Apply the most recently processed position targets."""
-        if self._homie_step_counter == 0:
-            self._update_homie_targets()
+        env_ids = (self._homie_step_counter == 0).nonzero(as_tuple=False).flatten()
+        if env_ids.numel():
+            self._update_homie_targets(env_ids)
             self._refresh_processed_actions()
         self._homie_step_counter = (
             self._homie_step_counter + 1
@@ -427,7 +451,8 @@ class G1WujiDoormanAction(ActionTerm):
         self._hand_controller.reset(controller_env_ids)
         if self._homie_controller is not None:
             self._homie_controller.reset(controller_env_ids)
-        self._homie_step_counter = 0
+        self._homie_step_counter[env_ids] = 0
+        self.invalid_state[env_ids] = False
 
 
 @configclass
@@ -437,6 +462,7 @@ class G1WujiDoormanActionCfg(ActionTermCfg):
     class_type: type[ActionTerm] = G1WujiDoormanAction
     hand_controller_type: type[HandController] = PrimitiveHandController
     homie_controller_type: type[HomieController] | None = HomieController
+    homie_checkpoint_path: str | None = None
     homie_decimation: int = 4
     delta_action_scale: float = 0.3
     delta_action_clip: float = 15.0

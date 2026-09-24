@@ -5,6 +5,9 @@ from pathlib import Path
 import isaaclab.sim as sim_utils
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets import ArticulationCfg
+from g1_wuji_doorman.controllers.hand.poses import (
+    WUJI_HAND_OPEN_POSE, WUJI_HAND_GRASP_POSE, WUJI_HAND_REST_POSE,
+)
 
 
 # -----------------------------------------------------------------------------
@@ -215,6 +218,13 @@ _free_base_default_pos.update(
         "right_finger1_joint1": 0.05,
     }
 )
+
+# Zero primitive command means the midpoint, matching DoorMan's linear primitive.
+_free_base_default_pos.update(zip(
+    DOORMAN_LEFT_HAND_DOF_NAMES,
+    ((a + b) * 0.5 for a, b in zip(WUJI_HAND_OPEN_POSE, WUJI_HAND_GRASP_POSE)),
+))
+_free_base_default_pos.update(zip(DOORMAN_RIGHT_HAND_DOF_NAMES, WUJI_HAND_REST_POSE))
 
 G1_WUJI_FREE_BASE_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(

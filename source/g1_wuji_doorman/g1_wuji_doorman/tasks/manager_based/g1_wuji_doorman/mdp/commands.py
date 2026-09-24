@@ -1,11 +1,13 @@
 """Central task state for the fixed, right-hinged DoorMan baseline.
 
-Isaac Lab computes termination/reward BEFORE CommandManager.compute. The first
-termination term calls advance() once per physics rollout; observation/reward
-terms only read state. compute() only refreshes geometry after automatic resets.
+Isaac Lab computes termination/reward BEFORE CommandManager.compute. Every task
+termination and reward requests idempotent advance(), so their declaration order
+is immaterial. compute() refreshes geometry after automatic resets.
 """
 
 import math
+import omni.usd
+from pathlib import PurePosixPath
 
 import torch
 import torch.nn.functional as F
@@ -17,6 +19,7 @@ from g1_wuji_doorman.assets.robots import (
     DOORMAN_LEFT_ARM_DOF_NAMES, DOORMAN_LEFT_HAND_DOF_NAMES, DOORMAN_RIGHT_ARM_DOF_NAMES,
 )
 from g1_wuji_doorman.controllers.hand import WUJI_HAND_OPEN_POSE, WUJI_HAND_GRASP_POSE
+from .contracts import contact_filter_indices, door_info_from_metadata
 
 FINGER_LINKS = tuple(
     f"left_finger{finger}_{link}"
@@ -44,11 +47,25 @@ class DoorTaskState(CommandTerm):
         self.open_pose = torch.tensor(WUJI_HAND_OPEN_POSE, device=self.device)
         self.pose_delta = torch.tensor(WUJI_HAND_GRASP_POSE, device=self.device) - self.open_pose
         self.alignment_offset = torch.tensor(cfg.target_palm_quat, device=self.device).expand(self.num_envs, -1)
-        self.privileged_door_info = torch.tensor(
-            cfg.privileged_door_info,
-            dtype=torch.float32,
-            device=self.device,
-        ).expand(self.num_envs, -1)
+        self.contact_sensor = env.scene["handle_contacts"]
+        view = self.contact_sensor.contact_physx_view
+        self.contact_indices = torch.tensor(
+            contact_filter_indices(view.sensor_paths, view.filter_paths, FINGER_LINKS),
+            dtype=torch.long, device=self.device,
+        )
+        stage = omni.usd.get_context().get_stage()
+        self.privileged_door_info = door_info_from_metadata([
+            stage.GetPrimAtPath(str(PurePosixPath(path).parent)).GetCustomData()
+            for path in view.sensor_paths
+        ], self.device)
+        self.foot_ids = self.robot.find_bodies(["left_ankle_roll_link", "right_ankle_roll_link"], preserve_order=True)[0]
+        limits = self.door.data.joint_pos_limits[:, self.door_ids]
+        if not torch.allclose(limits[..., 0], torch.zeros_like(limits[..., 0]), atol=1e-5):
+            raise ValueError("Expected positive hinge/handle/latch travel starting at zero")
+        self.handle_travel = limits[:, 1, 1].clone()
+        self.latch_travel = limits[:, 2, 1].clone()
+        if not ((self.handle_travel > 0) & (self.latch_travel > 0)).all():
+            raise ValueError("Handle and latch must have positive travel")
         self.stage = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
         self.reward_stage = self.stage.clone()
         self.hold = self.stage.clone()
@@ -62,7 +79,7 @@ class DoorTaskState(CommandTerm):
         self.initial_root_xy = torch.zeros(self.num_envs, 2, device=self.device)
         self._last_step = -1
         self._timeouts = torch.tensor(cfg.stage_timeouts_s, device=self.device)
-        for name in ("distance", "door_angle", "handle_angle", "contact_count", "max_stage", "success"):
+        for name in ("distance", "door_angle", "handle_angle", "contact_count", "max_stage", "success", "base_drift", "foot_speed", "invalid_state"):
             self.metrics[name] = torch.zeros(self.num_envs, device=self.device)
         for stage in range(4):
             self.metrics[f"stage_{stage}_timeout"] = torch.zeros(self.num_envs, device=self.device)
@@ -90,10 +107,13 @@ class DoorTaskState(CommandTerm):
         self.distance = self.relative_pos.norm(dim=-1)
         error_quat = quat_mul(self.relative_quat, self.alignment_offset)
         self.orientation_error = 2 * torch.atan2(error_quat[:, 1:].norm(dim=-1), error_quat[:, 0].abs())
-        matrix = self._env.scene["handle_contacts"].data.force_matrix_w
+        matrix = self.contact_sensor.data.force_matrix_w
         if matrix is None or matrix.shape[1:] != (1, 25, 3):
             raise RuntimeError(f"Expected handle-to-25-links contact matrix, got {None if matrix is None else matrix.shape}")
-        self.link_forces = matrix[:, 0].norm(dim=-1).reshape(self.num_envs, 5, 5)
+        self.contact_forces_w = torch.gather(
+            matrix[:, 0], 1, self.contact_indices[..., None].expand(-1, -1, 3)
+        )
+        self.link_forces = self.contact_forces_w.norm(dim=-1).reshape(self.num_envs, 5, 5)
         self.tip_forces = self.link_forces[:, :, -1]
         self.finger_forces = self.link_forces.amax(dim=-1)
         self.contact_count = (self.finger_forces > self.cfg.contact_threshold).sum(dim=-1)
@@ -104,12 +124,17 @@ class DoorTaskState(CommandTerm):
         self.fallen = (robot.root_pos_w[:, 2] - self._env.scene.env_origins[:, 2] < self.cfg.min_root_height)
         self.fallen |= -robot.projected_gravity_b[:, 2] < self.cfg.min_upright
         finite_state = torch.cat((robot.root_state_w, robot.joint_pos, robot.joint_vel,
-                                  self.door_state, self.target_in_palm, self.link_forces.flatten(1)), dim=-1)
+                                  door.root_state_w, door.joint_pos, door.joint_vel,
+                                  self.door_state, self.target_in_palm, self.root_in_door,
+                                  self.contact_forces_w.flatten(1)), dim=-1)
         self.invalid = ~torch.isfinite(finite_state).all(dim=-1)
-        self.invalid |= robot.joint_vel.abs().amax(dim=-1) > 200.0
+        self.invalid |= robot.joint_vel.abs().amax(dim=-1) > self.cfg.max_joint_speed
+        # CommandManager is constructed before ActionManager in Isaac Lab.
+        if hasattr(self._env, "action_manager"):
+            self.invalid |= self._env.action_manager.get_term("doorman").invalid_state
 
     def advance(self):
-        """Called before all other terminations and rewards; idempotent within a step."""
+        """Safe from any termination/reward; advance at most once per high-level step."""
         if self._last_step == self._env.common_step_counter:
             return
         self._last_step = self._env.common_step_counter
@@ -125,7 +150,7 @@ class DoorTaskState(CommandTerm):
                     & (self.orientation_error < self.cfg.reach_angle)
                     & (self.closure < 0.6))
         grasp = self.grasp_contact & (self.distance < 0.12)
-        unlatch = grasp & (self.door_state[:, 4] >= self.cfg.latch_release)
+        unlatch = grasp & (self.door_state[:, 4] >= self.cfg.latch_release_fraction * self.latch_travel)
         condition = torch.where(self.stage == 0, pregrasp, torch.where(self.stage == 1, grasp, unlatch))
         condition &= (self.stage < 3) & healthy
         self.hold.copy_(torch.where(condition, self.hold + 1, 0))
@@ -145,6 +170,9 @@ class DoorTaskState(CommandTerm):
         self.metrics["contact_count"].copy_(self.contact_count)
         self.metrics["max_stage"].copy_(self.stage)
         self.metrics["success"].copy_(self.success)
+        self.metrics["base_drift"].copy_(torch.nan_to_num((self.robot.data.root_pos_w[:, :2] - self.initial_root_xy).norm(dim=-1)))
+        self.metrics["foot_speed"].copy_(torch.nan_to_num(self.robot.data.body_lin_vel_w[:, self.foot_ids].norm(dim=-1).amax(dim=-1)))
+        self.metrics["invalid_state"].copy_(self.invalid)
         for stage in range(4):
             self.metrics[f"stage_{stage}_timeout"].copy_(self.stage_timeout & (self.reward_stage == stage))
 
@@ -178,7 +206,8 @@ class DoorTaskStateCfg(CommandTermCfg):
     reach_angle: float = math.radians(30)
     contact_threshold: float = 1.0
     transition_hold_steps: int = 5
-    latch_release: float = 0.024
+    latch_release_fraction: float = 0.8
+    max_joint_speed: float = 200.0
     success_angle: float = math.radians(30)
     success_hold_s: float = 0.5
     stage_timeouts_s: tuple = (8.0, 6.0, 6.0, 10.0)
@@ -186,6 +215,3 @@ class DoorTaskStateCfg(CommandTermCfg):
     min_upright: float = 0.5
     # DoorMan left-hand grasp orientation: target frame rotated +90 deg about X.
     target_palm_quat: tuple = (math.sqrt(0.5), math.sqrt(0.5), 0.0, 0.0)
-    # DoorMan teacher observation: width, height, handle height/offset,
-    # normalized mass, left/right encoding, and inward/outward direction.
-    privileged_door_info: tuple = (0.85, 2.0, 0.8, 0.23, 0.1, -1.0, 2.0, -1.0)

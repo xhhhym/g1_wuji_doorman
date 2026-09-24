@@ -75,6 +75,12 @@ class DoorSpawnerCfg(sim_utils.RigidObjectSpawnerCfg):
     rand_door_open_lr: Optional[Literal["left", "right"]] = None
     rand_door_open_io: Optional[Literal["in", "out"]] = None
     rand_total_wall_height: Optional[float] = None
+    rand_door_cover_width: Optional[float] = None
+    rand_spawn_keyhole: Optional[bool] = None
+    rand_keyhole_offset: Optional[float] = None
+    rand_num_subpanels: Optional[int] = None
+    rand_subpanel_frame_width: Optional[float] = None
+    rand_subpanel_bottom: Optional[float] = None
     rand_axle_length: Optional[float] = None
     rand_handle_length: Optional[float] = None
     rand_hook_length: Optional[float] = None
@@ -265,7 +271,7 @@ def spawn_door(
     covers_prim_path = os.path.join(root_prim_path, "covers")
     create_prim(covers_prim_path, "Scope")
     top_cover_prim_path = os.path.join(root_prim_path, "covers/top_cover")
-    door_cover_width = np.random.uniform(0.03, 0.05)
+    door_cover_width = np.random.uniform(0.03, 0.05) if cfg.rand_door_cover_width is None else cfg.rand_door_cover_width
     create_prim(top_cover_prim_path, "Cube")
     set_prim_transform(
         stage,
@@ -345,7 +351,7 @@ def spawn_door(
     add_mass(stage, panel_shape_prim_path, mass=door_weight)
     add_collider(stage, panel_shape_prim_path)
     build_frame(
-        stage, panel_prim_path, panel_shape_prim_path, door_width, door_height, 0.02, gap_width
+        stage, panel_prim_path, panel_shape_prim_path, door_width, door_height, 0.02, gap_width, cfg
     )
 
     # spawn the door handle
@@ -436,7 +442,8 @@ def spawn_door(
         add_collider(stage, hook_outside_prim_path)
 
     # spawn keyhole
-    if np.random.rand() < 0.5:
+    spawn_keyhole = np.random.rand() < 0.5 if cfg.rand_spawn_keyhole is None else cfg.rand_spawn_keyhole
+    if spawn_keyhole:
         keyhole_prim_path = os.path.join(panel_prim_path, "keyhole")
         create_prim(keyhole_prim_path, "Cylinder")
         set_prim_transform(
@@ -445,7 +452,7 @@ def spawn_door(
             (
                 0,
                 (half_door_width - door_handle_width) * door_open_lr,
-                door_handle_height + np.random.uniform(0.05, 0.1),
+                door_handle_height + (np.random.uniform(0.05, 0.1) if cfg.rand_keyhole_offset is None else cfg.rand_keyhole_offset),
             ),
             (0, 90, 0),
             (1.0, 1.0, 1.0),
@@ -1101,14 +1108,18 @@ def build_frame(
     height: float,
     thickness: float,
     gap_width: float,
+    cfg: DoorSpawnerCfg | None = None,
 ):
+    cfg = cfg or DoorSpawnerCfg()
     width = width - 2 * gap_width
     height = height - 2 * gap_width
-    frame_width = np.random.uniform(0.04, 0.08)
-    num_subpanels = np.random.randint(0, 5)
-    if num_subpanels <= 2:
-        frame_width = np.random.uniform(0.1, 0.15)
-    reserve_bottom = np.random.uniform(0.0, 0.15)
+    num_subpanels = np.random.randint(0, 5) if cfg.rand_num_subpanels is None else cfg.rand_num_subpanels
+    if not 0 <= num_subpanels <= 4:
+        raise ValueError("rand_num_subpanels must be between 0 and 4")
+    frame_width = (np.random.uniform(0.1, 0.15) if num_subpanels <= 2 else np.random.uniform(0.04, 0.08))
+    if cfg.rand_subpanel_frame_width is not None:
+        frame_width = cfg.rand_subpanel_frame_width
+    reserve_bottom = np.random.uniform(0.0, 0.15) if cfg.rand_subpanel_bottom is None else cfg.rand_subpanel_bottom
 
     if num_subpanels == 0:
         return

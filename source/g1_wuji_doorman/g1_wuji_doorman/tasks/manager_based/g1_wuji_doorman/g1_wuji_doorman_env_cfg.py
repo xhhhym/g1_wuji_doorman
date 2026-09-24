@@ -74,6 +74,15 @@ DOOR_SPAWNER_CFG = DoorSpawnerCfg(
     rand_handle_length=0.20,
     rand_handle_radius=0.02,
     rand_spawn_hook=False,
+    rand_hook_length=0.05,
+    # Freeze the remaining frame/decorative geometry for this single-door baseline.
+    rand_total_wall_height=2.7,
+    rand_door_cover_width=0.04,
+    rand_spawn_keyhole=False,
+    rand_keyhole_offset=0.075,
+    rand_num_subpanels=0,
+    rand_subpanel_frame_width=0.125,
+    rand_subpanel_bottom=0.0,
 
     # 固定动力学
     rand_hinge_drive_max_force=10.0,
@@ -202,7 +211,9 @@ class ObservationsCfg:
         door_state = ObsTerm(func=mdp.door_task_observation, params={"name": "door_state"})
         tip_forces = ObsTerm(func=mdp.door_task_observation, params={"name": "tip_forces"})
         privileged_door_info = ObsTerm(func=mdp.door_task_observation, params={"name": "privileged_door_info"})
-        last_action = ObsTerm(func=mdp.door_task_observation, params={"name": "last_action"})
+        finger_forces = ObsTerm(func=mdp.door_task_observation, params={"name": "finger_forces"})
+        actions = ObsTerm(func=mdp.door_task_observation, params={"name": "actions"})
+        delta_actions = ObsTerm(func=mdp.door_task_observation, params={"name": "delta_actions"})
 
         def __post_init__(self):
             self.enable_corruption = False
@@ -260,7 +271,7 @@ class RewardsCfg:
 
 @configclass
 class TerminationsCfg:
-    # MUST remain first: refresh task state before remaining terminations/rewards.
+    # Every task termination ensures the same idempotent state update; order is free.
     invalid_state = DoneTerm(func=mdp.task_invalid_state)
     fall = DoneTerm(func=mdp.task_fall)
     success = DoneTerm(func=mdp.task_success)

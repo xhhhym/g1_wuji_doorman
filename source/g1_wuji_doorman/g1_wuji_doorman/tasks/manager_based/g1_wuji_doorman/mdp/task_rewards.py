@@ -4,6 +4,7 @@ import torch
 
 def door_task_reward(env, name: str):
     t = env.command_manager.get_term("door_task")
+    t.advance()
     r = t.robot.data
     stage = t.reward_stage
     contact = t.grasp_contact.float()
@@ -19,13 +20,13 @@ def door_task_reward(env, name: str):
     elif name == "closure":
         value = (stage >= 1) * (t.contact_count >= 2) * near * t.closure
     elif name == "handle_amount":
-        value = (stage == 2) * contact * (t.door_state[:, 2] / 0.785398).clamp(0, 1)
+        value = (stage == 2) * contact * (t.door_state[:, 2] / t.handle_travel).clamp(0, 1)
     elif name == "handle_progress":
         value = (stage == 2) * contact * t.progress[:, 1].clamp_min(0) / env.step_dt
     elif name == "handle_regression":
         value = (stage == 2) * (-t.progress[:, 1]).clamp_min(0) / env.step_dt
     elif name == "latch":
-        value = (stage == 2) * contact * (t.door_state[:, 4] / 0.03).clamp(0, 1)
+        value = (stage == 2) * contact * (t.door_state[:, 4] / t.latch_travel).clamp(0, 1)
     elif name == "door_progress":
         value = (stage == 3) * contact * t.progress[:, 0].clamp_min(0) / env.step_dt
     elif name == "door_amount":
@@ -47,7 +48,8 @@ def door_task_reward(env, name: str):
     elif name == "right_arm_rest":
         value = (r.joint_pos[:, t.right_arm_ids] - r.default_joint_pos[:, t.right_arm_ids]).square().sum(-1)
     elif name == "action_rate":
-        value = (env.action_manager.action - env.action_manager.prev_action).square().sum(-1)
+        # DoorMan penalty_delta_action_rate penalizes raw increment magnitude.
+        value = env.action_manager.get_term("doorman").last_delta_actions.square().sum(-1)
     elif name == "joint_velocity":
         value = r.joint_vel[:, t.arm_ids + t.hand_ids].square().sum(-1)
     elif name == "joint_limits":

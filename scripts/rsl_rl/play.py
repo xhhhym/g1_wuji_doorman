@@ -33,6 +33,8 @@ parser.add_argument(
     action="store_true",
     help="Use the pre-trained checkpoint from Nucleus.",
 )
+parser.add_argument("--max_steps", type=int, default=0, help="Stop after this many steps; 0 runs continuously.")
+parser.add_argument("--skip_export", action="store_true", help="Skip ONNX/JIT export for inference smoke checks.")
 parser.add_argument("--real-time", action="store_true", default=False, help="Run in real-time, if possible.")
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
@@ -169,14 +171,16 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # export policy to onnx/jit
     export_model_dir = os.path.join(os.path.dirname(resume_path), "exported")
-    export_policy_as_jit(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.pt")
-    export_policy_as_onnx(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.onnx")
+    if not args_cli.skip_export:
+        export_policy_as_jit(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.pt")
+        export_policy_as_onnx(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.onnx")
 
     dt = env.unwrapped.step_dt
 
     # reset environment
     obs = env.get_observations()
     timestep = 0
+    reset_count = 0
     # simulate environment
     while simulation_app.is_running():
         start_time = time.time()
@@ -185,11 +189,17 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             # agent stepping
             actions = policy(obs)
             # env stepping
-            obs, _, dones, _ = env.step(actions)
+            obs, rewards, dones, _ = env.step(actions)
+            if args_cli.max_steps > 0:
+                assert torch.isfinite(actions).all() and torch.isfinite(rewards).all()
+                assert all(torch.isfinite(value).all() for value in obs.values())
+                reset_count += int(dones.sum())
             # reset recurrent states for episodes that have terminated
             policy_nn.reset(dones)
+        timestep += 1
+        if args_cli.max_steps > 0 and timestep >= args_cli.max_steps:
+            break
         if args_cli.video:
-            timestep += 1
             # Exit the play loop after recording one video
             if timestep == args_cli.video_length:
                 break
@@ -199,6 +209,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         if args_cli.real_time and sleep_time > 0:
             time.sleep(sleep_time)
 
+    if args_cli.max_steps > 0:
+        print(f"PLAY_SMOKE_COMPLETE steps={timestep} resets={reset_count} finite=True", flush=True)
     # close the simulator
     env.close()
 
