@@ -14,6 +14,14 @@
 **/*.usdc
 **/*.usdz
 
+# Runtime G1+Wuji asset. Keep this generated USD set in Git LFS so a fresh
+# clone can train without rerunning the URDF converter.
+!source/g1_wuji_doorman/g1_wuji_doorman/assets/robots/g1_wuji/g1_wuji_no_merge.usd
+!source/g1_wuji_doorman/g1_wuji_doorman/assets/robots/g1_wuji/configuration/g1_wuji_no_merge_base.usd
+!source/g1_wuji_doorman/g1_wuji_doorman/assets/robots/g1_wuji/configuration/g1_wuji_no_merge_physics.usd
+!source/g1_wuji_doorman/g1_wuji_doorman/assets/robots/g1_wuji/configuration/g1_wuji_no_merge_robot.usd
+!source/g1_wuji_doorman/g1_wuji_doorman/assets/robots/g1_wuji/configuration/g1_wuji_no_merge_sensor.usd
+
 # Python
 .DS_Store
 **/*.egg-info/
