@@ -2,6 +2,32 @@
 
 DoorMan 风格 teacher 特权观测与阶段奖励已接入；本地 2 环境 PPO 冒烟训练通过。复现命令、接口和验证范围见 [STAGED_MDP_SMOKE.md](docs/STAGED_MDP_SMOKE.md)。
 
+## 远程训练
+
+先激活安装了 Isaac Lab 的 Python 环境，然后准备仓库：
+
+```bash
+git lfs install
+git lfs pull
+python -m pip install -e ./source/g1_wuji_doorman
+python -m pip install rsl-rl-lib==3.0.1 tensorboard
+```
+
+训练脚本的第一个参数是并行环境数：
+
+```bash
+# 两环境短训
+MAX_ITERATIONS=10 RUN_NAME=smoke ./scripts/train_doorman.sh 2
+
+# 4096环境正式训练
+MAX_ITERATIONS=30000 NUM_MINI_BATCHES=4 RUN_NAME=door_4096_seed42 \
+  ./scripts/train_doorman.sh 4096
+```
+
+可配置的环境变量包括 `MAX_ITERATIONS`、`NUM_MINI_BATCHES`、`SEED`、
+`RUN_NAME`、`SAVE_INTERVAL` 和 `DEVICE`。如在 PPO 更新阶段显存不足，逐步将
+`NUM_MINI_BATCHES` 从4增大到8或16。
+
 # Template for Isaac Lab Projects
 
 ## Overview
@@ -28,6 +54,7 @@ It allows you to develop in an isolated environment, outside of the core Isaac L
     ```bash
     # use 'PATH_TO_isaaclab.sh|bat -p' instead of 'python' if Isaac Lab is not installed in Python venv or conda
     python -m pip install -e source/g1_wuji_doorman
+    ```
 
 - Verify that the extension is correctly installed by:
 
