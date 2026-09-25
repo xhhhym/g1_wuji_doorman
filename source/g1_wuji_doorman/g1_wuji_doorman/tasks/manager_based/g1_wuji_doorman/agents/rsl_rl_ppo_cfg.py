@@ -10,13 +10,18 @@ from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlPpoActorCriticRecurr
 
 @configclass
 class PPORunnerCfg(RslRlOnPolicyRunnerCfg):
-    clip_actions = 100.0
-    num_steps_per_env = 32
+    # This task accumulates policy outputs as joint-target increments. Keep one
+    # sampled increment bounded even if the Gaussian mean becomes unstable.
+    clip_actions = 1.0
+    # Match the DoorMan recurrent teacher's temporal batch length.
+    num_steps_per_env = 64
     max_iterations = 150
     save_interval = 50
     experiment_name = "g1_wuji_doorman"
     obs_groups = {"policy": ["policy"], "critic": ["critic"]}
     policy = RslRlPpoActorCriticRecurrentCfg(
+        # Lower than DoorMan's 0.8 because this policy controls cumulative arm
+        # increments and upstream RSL-RL does not expose DoorMan's max-std clamp.
         init_noise_std=0.3,
         actor_obs_normalization=True,
         critic_obs_normalization=True,
@@ -33,13 +38,15 @@ class PPORunnerCfg(RslRlOnPolicyRunnerCfg):
         value_loss_coef=1.0,
         use_clipped_value_loss=True,
         clip_param=0.2,
-        entropy_coef=0.005,
+        # Two-env diagnostics showed std growth and exploding action penalties.
+        # Large cloud batches provide exploration without a strong entropy push.
+        entropy_coef=0.001,
         num_learning_epochs=5,
         num_mini_batches=4,
-        learning_rate=3.0e-4,
+        learning_rate=1.0e-4,
         schedule="adaptive",
-        gamma=0.99,
-        lam=0.95,
-        desired_kl=0.01,
+        gamma=0.9975,
+        lam=0.985,
+        desired_kl=0.005,
         max_grad_norm=1.0,
     )

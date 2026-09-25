@@ -8,7 +8,7 @@ def door_task_reward(env, name: str):
     r = t.robot.data
     stage = t.reward_stage
     contact = t.grasp_contact.float()
-    near = torch.exp(-t.distance.square() / 0.2**2)
+    near = torch.exp(-t.distance.square() / t.cfg.reach_reward_std**2)
     if name == "reach":
         value = near * torch.where(stage == 0, 1.0, 0.25)
     elif name == "align":

@@ -242,10 +242,12 @@ class EventCfg:
 
 @configclass
 class RewardsCfg:
-    """Initial smoke-training weights; progress/bonus terms account for step_dt."""
-    reach = RewTerm(func=mdp.door_task_reward, weight=4.0, params={"name": "reach"})
-    align = RewTerm(func=mdp.door_task_reward, weight=1.0, params={"name": "align"})
-    open_hand = RewTerm(func=mdp.door_task_reward, weight=0.5, params={"name": "open_hand"})
+    """Stage rewards; progress/bonus terms account for step_dt."""
+    # Stage-0 analogues use DoorMan's 6.0/3.0/1.5 weights. Their formulas are
+    # task-specific and are not claimed to be identical to the upstream terms.
+    reach = RewTerm(func=mdp.door_task_reward, weight=6.0, params={"name": "reach"})
+    align = RewTerm(func=mdp.door_task_reward, weight=3.0, params={"name": "align"})
+    open_hand = RewTerm(func=mdp.door_task_reward, weight=1.5, params={"name": "open_hand"})
     contact = RewTerm(func=mdp.door_task_reward, weight=2.0, params={"name": "contact"})
     closure = RewTerm(func=mdp.door_task_reward, weight=0.5, params={"name": "closure"})
     handle_amount = RewTerm(func=mdp.door_task_reward, weight=1.0, params={"name": "handle_amount"})

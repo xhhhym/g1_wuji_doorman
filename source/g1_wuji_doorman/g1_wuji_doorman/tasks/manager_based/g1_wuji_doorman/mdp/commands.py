@@ -208,6 +208,10 @@ class DoorTaskStateCfg(CommandTermCfg):
     resampling_time_range: tuple = (1.0e9, 1.0e9)
     reach_distance: float = 0.08
     reach_angle: float = math.radians(30)
+    # DoorMan uses 0.2 m after staged resets. This task always starts from its
+    # door-side default pose (~0.5-0.8 m palm distance), so use a wider dense
+    # reward kernel while retaining the strict 0.08 m transition threshold.
+    reach_reward_std: float = 0.5
     contact_threshold: float = 1.0
     transition_hold_steps: int = 5
     latch_release_fraction: float = 0.8

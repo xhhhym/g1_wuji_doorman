@@ -8,10 +8,12 @@
 - `PPORunnerCfg.policy` 使用 `ActorCriticRecurrent`：actor/critic 各自 LSTM 2×256，后接 MLP [512,256,128]、SiLU（RSL-RL 名称 swish）。对应原版 `door_open_homie_lstm.yaml` 的网络结构。
 - 高层 25 Hz、物理 200 Hz；高层用 LSTM 隐状态表达历史，不额外堆叠当前帧。HOMIE 保留独立 50 Hz、6×86 历史。
 - primitive action=8；actor 当前帧139维、critic219维。旧111/191维 MLP checkpoint 不兼容，需要新训。
+- PPO每个env采64步；lr/gamma/lam/desired_kl使用原Doorman的1e−4/.9975/.985/.005。策略输出逐步裁到±1；初始std=.3、entropy=.001是针对本任务累计增量和第一次失败曲线的保守设置，并非原Doorman的完整复制。
+- stage0的严格转换阈值仍为掌距.08m；仅将稠密reach核std从原版对应的.2m放宽到.5m，以覆盖本任务默认重置时更远的掌距。
 
 观测 `actions` 为 `[HOMIE raw15, cumulative_left_arm7, cumulative_left_hand1]`，共23维，尚未展开手primitive，也未裁剪到关节软限位。`delta_actions` 为刚执行的原始8维高层增量。命名对应原版 `_get_obs_actions` / `_get_obs_delta_actions`：后者**不是累计量**。两项scale=1、clip=100，避免抹平累计10–15的区别。固定右臂/右手和行走速度通道不纳入当前动作观测。
 
-`action_rate` 已按原版 `_reward_penalty_delta_action_rate` 改为原始增量平方和；权重仍−.01，不改其他24项权重。actor 新增5维 `finger_forces`，与阶段判据读取同一整指最大接触力。JointTarget 后端 action=27，两项动作观测各增加19维，推导 actor177、critic257；本次验证了该后端目标映射，未跑其完整PPO训练。
+`action_rate` 已按原版 `_reward_penalty_delta_action_rate` 改为原始增量平方和，权重仍−.01。第一次长跑失败诊断后，stage0的reach/align/open_hand改为与原版对应项相同的6/3/1.5，但公式仍是本任务的阶段奖励；其他奖励权重未动。actor 新增5维 `finger_forces`，与阶段判据读取同一整指最大接触力。JointTarget 后端 action=27，两项动作观测各增加19维，推导 actor177、critic257；本次验证了该后端目标映射，未跑其完整PPO训练。
 
 ## 修正入口
 
