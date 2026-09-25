@@ -310,3 +310,25 @@ class G1WujiDoormanEnvCfg(ManagerBasedRLEnvCfg):
         # simulation settings
         self.sim.dt = 1 / 200
         self.sim.render_interval = self.decimation
+
+
+@configclass
+class ReachOnlyCommandsCfg:
+    """Phase-1 curriculum: remain in stage zero and finish on palm proximity."""
+
+    door_task = mdp.DoorTaskStateCfg(reach_only=True)
+
+
+@configclass
+class ReachOnlyRewardsCfg:
+    """Only the dense palm-to-handle distance reward."""
+
+    reach = RewTerm(func=mdp.door_task_reward, weight=6.0, params={"name": "reach"})
+
+
+@configclass
+class G1WujiDoormanReachEnvCfg(G1WujiDoormanEnvCfg):
+    """First curriculum phase: learn to move the left palm near the handle."""
+
+    commands: ReachOnlyCommandsCfg = ReachOnlyCommandsCfg()
+    rewards: ReachOnlyRewardsCfg = ReachOnlyRewardsCfg()

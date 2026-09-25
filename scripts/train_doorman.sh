@@ -20,8 +20,10 @@ MAX_ITERATIONS="${MAX_ITERATIONS:-30000}"
 NUM_MINI_BATCHES="${NUM_MINI_BATCHES:-4}"
 SEED="${SEED:-42}"
 RUN_NAME="${RUN_NAME:-doorman_${NUM_ENVS}env_seed${SEED}}"
+EXPERIMENT_NAME="${EXPERIMENT_NAME:-g1_wuji_doorman_recurrent}"
 SAVE_INTERVAL="${SAVE_INTERVAL:-500}"
 DEVICE="${DEVICE:-cuda:0}"
+TASK_ID="${TASK_ID:-Template-G1-Wuji-Doorman-v0}"
 DRY_RUN="${DRY_RUN:-0}"
 
 for value_name in NUM_ENVS MAX_ITERATIONS NUM_MINI_BATCHES SAVE_INTERVAL; do
@@ -74,13 +76,13 @@ export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:T
 
 COMMAND=(
   python -u scripts/rsl_rl/train.py
-  --task Template-G1-Wuji-Doorman-v0
+  --task "$TASK_ID"
   --num_envs "$NUM_ENVS"
   --device "$DEVICE"
   --headless
   --seed "$SEED"
   --max_iterations "$MAX_ITERATIONS"
-  --experiment_name g1_wuji_doorman_recurrent
+  --experiment_name "$EXPERIMENT_NAME"
   --run_name "$RUN_NAME"
   --logger tensorboard
   "agent.save_interval=${SAVE_INTERVAL}"
@@ -89,6 +91,8 @@ COMMAND=(
 )
 
 echo "Starting DoorMan training:"
+echo "  task=${TASK_ID}"
+echo "  experiment=${EXPERIMENT_NAME}"
 echo "  envs=${NUM_ENVS} iterations=${MAX_ITERATIONS} mini_batches=${NUM_MINI_BATCHES}"
 echo "  seed=${SEED} device=${DEVICE} run=${RUN_NAME}"
 

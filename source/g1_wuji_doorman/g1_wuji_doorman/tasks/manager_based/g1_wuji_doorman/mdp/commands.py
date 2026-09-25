@@ -150,6 +150,16 @@ class DoorTaskState(CommandTerm):
         self.time_in_stage += self._env.step_dt
         self.stage_timeout.copy_(self.time_in_stage >= self._timeouts[self.stage])
         healthy = ~(self.fallen | self.invalid | self.stage_timeout)
+        reached = self.distance < self.cfg.reach_distance
+        if self.cfg.reach_only:
+            # Phase-1 curriculum: learn only to bring the palm close to the
+            # handle.  Keep stage zero and terminate after a short stable hold.
+            self.hold.copy_(torch.where(reached & healthy, self.hold + 1, 0))
+            self.transition.zero_()
+            self.success_hold.copy_(self.hold)
+            self.success.copy_(self.hold >= self.cfg.transition_hold_steps)
+            self._update_metrics()
+            return
         pregrasp = ((self.distance < self.cfg.reach_distance)
                     & (self.orientation_error < self.cfg.reach_angle)
                     & (self.closure < 0.6))
@@ -212,6 +222,8 @@ class DoorTaskStateCfg(CommandTermCfg):
     # door-side default pose (~0.5-0.8 m palm distance), so use a wider dense
     # reward kernel while retaining the strict 0.08 m transition threshold.
     reach_reward_std: float = 0.5
+    # Curriculum switch used by the separately registered reach-only task.
+    reach_only: bool = False
     contact_threshold: float = 1.0
     transition_hold_steps: int = 5
     latch_release_fraction: float = 0.8
