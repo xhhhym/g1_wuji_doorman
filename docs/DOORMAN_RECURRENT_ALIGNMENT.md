@@ -25,7 +25,8 @@
 | `mdp/commands.py::DoorTaskState` | 实际关节行程用于归一化及80%解锁阈值；拓宽非有限检查，增加base_drift/foot_speed/invalid_state指标 |
 | `mdp/actions.py::G1WujiDoormanAction` | 非有限action隔离；每env HOMIE子步时钟；subset计算/局部reset不会改变peer状态；公开controller_actions |
 | `controllers/standing/homie.py::HomieController` | 子集历史更新，异常输入/输出按env标记到reset，提供有限回退目标 |
-| `controllers/standing/homie_cfg.py::default_homie_checkpoint` | 支持G1_HOMIE_CHECKPOINT；默认从已安装gr00t位置推导；ActionCfg也可给homie_checkpoint_path |
+| `controllers/standing/homie_cfg.py::default_homie_checkpoint` | 支持G1_HOMIE_CHECKPOINT；默认加载包内models/model_stand.pt；ActionCfg也可给homie_checkpoint_path |
+| `controllers/standing/homie_modules.py` | 从DoorMan/GR00T迁入checkpoint兼容的HOMIE推理网络；运行时不再依赖gr00t Python包；新旧网络固定输入输出逐元素一致 |
 | `assets/robots/g1_wuji.py` | 自由基座默认左手与primitive零命令中点一致、右手与rest一致 |
 | `assets/door/doorman_door.py::DoorSpawnerCfg/build_frame` | 增加cover/keyhole/子面板显式覆盖字段；任务配置固定残留几何随机项 |
 | `scripts/rsl_rl/train.py::main` | recurrent minibatch按env划分，选择不大于请求数且整除env数的batch数，警告并保存实际配置 |

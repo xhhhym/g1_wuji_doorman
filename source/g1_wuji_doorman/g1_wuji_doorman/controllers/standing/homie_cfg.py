@@ -1,7 +1,6 @@
 """Configuration constants for the frozen HOMIE standing controller."""
 
 from dataclasses import dataclass, field
-from importlib.util import find_spec
 from pathlib import Path
 import os
 
@@ -75,14 +74,11 @@ HOMIE_DEFAULT_JOINT_POS = (
 
 
 def default_homie_checkpoint() -> str:
-    """Resolve the checkpoint beside the installed DoorMan package, or use an override."""
+    """Resolve the bundled checkpoint, or use ``G1_HOMIE_CHECKPOINT``."""
     override = os.environ.get("G1_HOMIE_CHECKPOINT")
     if override:
         return str(Path(override).expanduser())
-    spec = find_spec("gr00t")
-    if spec is None or spec.origin is None:
-        raise RuntimeError("Install the DoorMan gr00t package and set G1_HOMIE_CHECKPOINT to model_stand.pt")
-    return str(Path(spec.origin).resolve().parent.parent / "models" / "model_stand.pt")
+    return str(Path(__file__).resolve().parents[2] / "models" / "model_stand.pt")
 
 
 @dataclass(frozen=True)

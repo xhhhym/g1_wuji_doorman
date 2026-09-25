@@ -117,8 +117,8 @@ logs/rsl_rl/g1_wuji_doorman/2026-09-24_16-22-11_teacher_privileged_smoke_2env/
   verify_task_mdp.log
 ```
 
-另外修复了 HOMIE 构造器覆盖 `Normal.set_default_validate_args` 的全局副作用：在本项目
-`controllers/standing/homie.py` 中保存并恢复原描述符，外部 DoorMan 源码和 checkpoint 不变。
+HOMIE 推理网络现已迁入本项目的 `controllers/standing/homie_modules.py`，并删除上游构造器
+覆盖 `Normal.set_default_validate_args` 的全局副作用；checkpoint参数和推理输出保持不变。
 
 ## 当前验证范围
 
