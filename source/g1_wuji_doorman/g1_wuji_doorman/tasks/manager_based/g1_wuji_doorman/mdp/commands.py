@@ -102,6 +102,8 @@ class DoorTaskState(CommandTerm):
         self.root_in_door = pose6d(root_pos, root_quat)
         q = door.joint_pos[:, self.door_ids]
         dq = door.joint_vel[:, self.door_ids]
+
+        
         # This generated asset uses positive hinge/handle rotation and latch translation.
         self.door_state = torch.stack((q[:, 0], dq[:, 0], q[:, 1], dq[:, 1], q[:, 2]), dim=-1)
         self.distance = self.relative_pos.norm(dim=-1)
@@ -118,6 +120,8 @@ class DoorTaskState(CommandTerm):
         self.finger_forces = self.link_forces.amax(dim=-1)
         self.contact_count = (self.finger_forces > self.cfg.contact_threshold).sum(dim=-1)
         self.grasp_contact = (self.contact_count >= 3) & (self.finger_forces[:, 0] > self.cfg.contact_threshold)
+
+
         # Actual finger posture; independent of the interchangeable action backend.
         self.closure = (((robot.joint_pos[:, self.hand_ids] - self.open_pose) * self.pose_delta).sum(-1)
                         / self.pose_delta.square().sum().clamp_min(1e-6)).clamp(0, 1)
