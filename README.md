@@ -24,7 +24,7 @@ MAX_ITERATIONS=30000 NUM_MINI_BATCHES=4 RUN_NAME=door_4096_seed42 \
   ./scripts/train_doorman.sh 4096
 ```
 
-建议先训练第一阶段。这个独立任务只有手掌到把手的距离奖励；手掌进入8厘米范围并连续保持5个高层控制步后，该回合记为成功。完整任务及其奖励不受影响。
+建议先训练第一阶段。这个独立任务使用手掌到把手的距离奖励，并在成功时一次性奖励10；手掌进入8厘米范围并连续保持5个高层控制步后，该回合记为成功。成功奖金避免策略停在把手附近持续刷距离奖励。完整任务及其奖励不受影响。
 
 ```bash
 # 第一阶段两环境接线检查
@@ -36,9 +36,16 @@ MAX_ITERATIONS=30000 NUM_MINI_BATCHES=4 RUN_NAME=reach_4096_seed42 \
   ./scripts/train_reach_only.sh 4096
 ```
 
+要验证同一个 policy 能否根据阶段观测从接近切换到抓握，使用两阶段任务。Stage 0 要求手掌在8厘米内、方向误差小于30度且手保持张开；Stage 1 要求至少三指和拇指接触把手。两个条件都需连续保持5个高层控制步，抓握成功后直接结束，不进入转把手和开门阶段。
+
+```bash
+MAX_ITERATIONS=30000 NUM_MINI_BATCHES=4 RUN_NAME=reach_grasp_4096_seed42 \
+  ./scripts/train_reach_grasp.sh 4096
+```
+
 可配置的环境变量包括 `MAX_ITERATIONS`、`NUM_MINI_BATCHES`、`SEED`、
 `RUN_NAME`、`EXPERIMENT_NAME`、`SAVE_INTERVAL` 和 `DEVICE`。如在 PPO 更新阶段显存不足，逐步将
-`NUM_MINI_BATCHES` 从4增大到8或16。`TASK_ID`可覆盖底层任务名；通常直接使用上面两个包装脚本即可。
+`NUM_MINI_BATCHES` 从4增大到8或16。`TASK_ID`可覆盖底层任务名；通常直接使用对应的包装脚本即可。
 
 # Template for Isaac Lab Projects
 

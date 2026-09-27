@@ -321,9 +321,10 @@ class ReachOnlyCommandsCfg:
 
 @configclass
 class ReachOnlyRewardsCfg:
-    """Only the dense palm-to-handle distance reward."""
+    """Palm-to-handle distance plus a terminal bonus that prevents stalling."""
 
     reach = RewTerm(func=mdp.door_task_reward, weight=6.0, params={"name": "reach"})
+    success = RewTerm(func=mdp.door_task_reward, weight=10.0, params={"name": "success"})
 
 
 @configclass
@@ -332,3 +333,31 @@ class G1WujiDoormanReachEnvCfg(G1WujiDoormanEnvCfg):
 
     commands: ReachOnlyCommandsCfg = ReachOnlyCommandsCfg()
     rewards: ReachOnlyRewardsCfg = ReachOnlyRewardsCfg()
+
+
+@configclass
+class ReachGraspCommandsCfg:
+    """Two-stage curriculum: reach/pregrasp, then close around the handle."""
+
+    door_task = mdp.DoorTaskStateCfg(grasp_only=True)
+
+
+@configclass
+class ReachGraspRewardsCfg:
+    """Only rewards needed to reach, switch stage, and establish a grasp."""
+
+    reach = RewTerm(func=mdp.door_task_reward, weight=6.0, params={"name": "reach"})
+    align = RewTerm(func=mdp.door_task_reward, weight=3.0, params={"name": "align"})
+    open_hand = RewTerm(func=mdp.door_task_reward, weight=1.5, params={"name": "open_hand"})
+    contact = RewTerm(func=mdp.door_task_reward, weight=2.0, params={"name": "contact"})
+    closure = RewTerm(func=mdp.door_task_reward, weight=0.5, params={"name": "closure"})
+    transition = RewTerm(func=mdp.door_task_reward, weight=2.0, params={"name": "transition"})
+    success = RewTerm(func=mdp.door_task_reward, weight=10.0, params={"name": "success"})
+
+
+@configclass
+class G1WujiDoormanReachGraspEnvCfg(G1WujiDoormanEnvCfg):
+    """Two-stage curriculum with one policy switch: pregrasp to grasp."""
+
+    commands: ReachGraspCommandsCfg = ReachGraspCommandsCfg()
+    rewards: ReachGraspRewardsCfg = ReachGraspRewardsCfg()

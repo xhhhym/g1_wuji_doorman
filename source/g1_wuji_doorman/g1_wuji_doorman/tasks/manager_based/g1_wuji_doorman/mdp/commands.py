@@ -169,9 +169,19 @@ class DoorTaskState(CommandTerm):
         condition &= (self.stage < 3) & healthy
         self.hold.copy_(torch.where(condition, self.hold + 1, 0))
         self.transition.copy_(self.hold >= self.cfg.transition_hold_steps)
-        self.stage += self.transition.long()
-        self.time_in_stage[self.transition] = 0
+        # The reach+grasp curriculum exposes one real policy switch (stage 0 to
+        # stage 1), then ends as soon as the stage-1 grasp has been held long
+        # enough.  Do not expose the unused unlatch stage to that policy.
+        grasp_complete = self.cfg.grasp_only & (self.stage == 1) & self.transition
+        stage_advance = self.transition & ~grasp_complete
+        self.stage += stage_advance.long()
+        self.time_in_stage[stage_advance] = 0
         self.hold[self.transition] = 0
+        if self.cfg.grasp_only:
+            self.success_hold.copy_(grasp_complete.long() * self.cfg.transition_hold_steps)
+            self.success.copy_(grasp_complete)
+            self._update_metrics()
+            return
         opened = (self.stage == 3) & (self.door_state[:, 0] >= self.cfg.success_angle) & healthy
         self.success_hold.copy_(torch.where(opened, self.success_hold + 1, 0))
         self.success.copy_(self.success_hold >= math.ceil(self.cfg.success_hold_s / self._env.step_dt))
@@ -224,6 +234,8 @@ class DoorTaskStateCfg(CommandTermCfg):
     reach_reward_std: float = 0.5
     # Curriculum switch used by the separately registered reach-only task.
     reach_only: bool = False
+    # Curriculum switch that terminates after a stable stage-1 grasp.
+    grasp_only: bool = False
     contact_threshold: float = 1.0
     transition_hold_steps: int = 5
     latch_release_fraction: float = 0.8
